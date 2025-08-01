@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
-	// SQLite3 database driver
-	_ "github.com/mattn/go-sqlite3"
+	// SQLite database driver (CGO-free)
+	_ "modernc.org/sqlite"
 )
 
 // SQLiteStorage implements the Storage interface using SQLite
@@ -20,7 +20,7 @@ type SQLiteStorage struct {
 
 // NewSQLiteStorage creates a new SQLite storage instance
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

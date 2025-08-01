@@ -131,7 +131,7 @@ build-darwin:
 build-windows:
 	@echo "Building for Windows..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=windows GOARCH=amd64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-windows-amd64.exe ./${CMD_DIR}
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-windows-amd64.exe ./${CMD_DIR}
 
 ## install: Install binary to GOPATH/bin
 .PHONY: install
