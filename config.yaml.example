@@ -1,0 +1,28 @@
+# LinkTadoru Configuration Example
+# Copy this file to config.yaml and modify as needed
+#
+# All these settings can also be configured via environment variables
+# with the prefix LT_ (e.g., LT_CONCURRENCY=20, LT_REQUEST_DELAY=2s)
+
+# Basic crawling parameters
+concurrency: 10         # Number of concurrent workers
+request_delay: 1s       # Delay between requests
+request_timeout: 30s    # HTTP request timeout
+user_agent: "LinkTadoru/1.0"  # HTTP User-Agent header
+respect_robots: true    # Whether to respect robots.txt (false=ignore robots.txt)
+limit: 0                # Stop after N pages (0=unlimited)
+
+# URL filtering configuration
+include_patterns:       # Regular expression patterns for URLs to include
+  - "^https?://[^/]*example\.com/.*"
+  - "^https?://[^/]*subdomain\.example\.com/.*"
+
+exclude_patterns:       # Regular expression patterns for URLs to exclude
+  - "\\.pdf$"           # Exclude PDF files
+  - ".*\\?print=1"      # Exclude print versions
+  - "/admin/.*"         # Exclude admin paths
+  - "/api/.*"           # Exclude API endpoints
+  - ".*#.*"             # Exclude fragment URLs
+
+# Database configuration
+database_path: "./crawl.db"    # Path to SQLite database file

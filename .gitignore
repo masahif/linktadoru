@@ -1,0 +1,72 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# Build output
+dist/
+crawler
+crawler-*
+linktadoru
+linktadoru-*
+
+# Database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Output directory
+output/
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Development tools
+.claude/
+.serena/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.html
+coverage.out
+coverage.txt
+
+# Environment files
+.env
+.env.local
+
+# Configuration files (except examples)
+config.yaml
+!config.yaml.example
+
+# Apache License NOTICE file should be tracked
+!NOTICE
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/
