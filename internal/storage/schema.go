@@ -22,11 +22,27 @@ CREATE TABLE IF NOT EXISTS pages (
     ttfb_ms INTEGER,
     download_time_ms INTEGER,
     response_size_bytes INTEGER,
-    content_type TEXT,
-    content_length INTEGER,
-    last_modified DATETIME,
-    server TEXT,
-    content_encoding TEXT,
+    
+    -- HTTP headers stored as JSON with generated columns for common headers
+    response_http_headers JSON,
+    content_type TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.content-type')) STORED,
+    content_length INTEGER GENERATED ALWAYS AS (
+        CASE 
+            WHEN json_extract(response_http_headers, '$.content-length') IS NOT NULL 
+            THEN CAST(json_extract(response_http_headers, '$.content-length') AS INTEGER)
+            ELSE NULL 
+        END
+    ) STORED,
+    last_modified DATETIME GENERATED ALWAYS AS (
+        CASE 
+            WHEN json_extract(response_http_headers, '$.last-modified') IS NOT NULL 
+            THEN datetime(json_extract(response_http_headers, '$.last-modified'))
+            ELSE NULL 
+        END
+    ) STORED,
+    server TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.server')) STORED,
+    content_encoding TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.content-encoding')) STORED,
+    
     crawled_at DATETIME,
     
     -- Error tracking
@@ -41,6 +57,11 @@ CREATE INDEX IF NOT EXISTS idx_pages_status_added ON pages(status, added_at);
 CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
 CREATE INDEX IF NOT EXISTS idx_pages_content_hash ON pages(content_hash) WHERE content_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pages_status_code ON pages(status_code) WHERE status = 'completed';
+
+-- Indexes for generated columns from JSON headers
+CREATE INDEX IF NOT EXISTS idx_pages_content_type ON pages(content_type) WHERE content_type IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pages_server ON pages(server) WHERE server IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pages_content_length ON pages(content_length) WHERE content_length IS NOT NULL;
 
 -- View for completed pages only (for analysis/reporting)
 CREATE VIEW IF NOT EXISTS completed_pages AS
