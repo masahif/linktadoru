@@ -19,10 +19,8 @@ go.work
 
 # Build output
 dist/
-crawler
-crawler-*
-linktadoru
-linktadoru-*
+/linktadoru
+/linktadoru-*
 
 # Database files
 *.db
