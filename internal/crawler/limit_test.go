@@ -126,3 +126,91 @@ func TestLimitLogic(t *testing.T) {
 		})
 	}
 }
+
+func TestGetStats(t *testing.T) {
+	// Test the GetStats method
+	config := &CrawlConfig{
+		SeedURLs:       []string{"http://example.com"},
+		Limit:          0,
+		Concurrency:    1,
+		RequestDelay:   10 * time.Millisecond,
+		RequestTimeout: 5 * time.Second,
+		UserAgent:      "LinkTadoru-Test/1.0",
+		RespectRobots:  false,
+	}
+
+	store := &MockStorage{}
+	crawler, err := NewCrawler(config, store)
+	if err != nil {
+		t.Fatalf("Failed to create crawler: %v", err)
+	}
+
+	// Test initial stats
+	stats := crawler.GetStats()
+	if stats.PagesCrawled != 0 {
+		t.Errorf("Expected PagesCrawled to be 0, got %d", stats.PagesCrawled)
+	}
+	if stats.ErrorCount != 0 {
+		t.Errorf("Expected Errors to be 0, got %d", stats.ErrorCount)
+	}
+
+	// Test incrementing counters
+	crawler.incrementCrawledCount()
+	crawler.incrementErrorCount()
+
+	stats = crawler.GetStats()
+	if stats.PagesCrawled != 1 {
+		t.Errorf("Expected PagesCrawled to be 1, got %d", stats.PagesCrawled)
+	}
+	if stats.ErrorCount != 1 {
+		t.Errorf("Expected Errors to be 1, got %d", stats.ErrorCount)
+	}
+
+	// Test multiple increments
+	crawler.incrementCrawledCount()
+	crawler.incrementCrawledCount()
+	crawler.incrementErrorCount()
+
+	stats = crawler.GetStats()
+	if stats.PagesCrawled != 3 {
+		t.Errorf("Expected PagesCrawled to be 3, got %d", stats.PagesCrawled)
+	}
+	if stats.ErrorCount != 2 {
+		t.Errorf("Expected Errors to be 2, got %d", stats.ErrorCount)
+	}
+}
+
+func TestIncrementCounters(t *testing.T) {
+	// Test individual counter increment functions
+	config := &CrawlConfig{
+		SeedURLs:       []string{"http://example.com"},
+		Limit:          0,
+		Concurrency:    1,
+		RequestDelay:   10 * time.Millisecond,
+		RequestTimeout: 5 * time.Second,
+		UserAgent:      "LinkTadoru-Test/1.0",
+		RespectRobots:  false,
+	}
+
+	store := &MockStorage{}
+	crawler, err := NewCrawler(config, store)
+	if err != nil {
+		t.Fatalf("Failed to create crawler: %v", err)
+	}
+
+	// Test incrementCrawledCount
+	initialCount := crawler.GetStats().PagesCrawled
+	crawler.incrementCrawledCount()
+	newCount := crawler.GetStats().PagesCrawled
+	if newCount != initialCount+1 {
+		t.Errorf("Expected PagesCrawled to increase by 1, got %d", newCount-initialCount)
+	}
+
+	// Test incrementErrorCount
+	initialErrors := crawler.GetStats().ErrorCount
+	crawler.incrementErrorCount()
+	newErrors := crawler.GetStats().ErrorCount
+	if newErrors != initialErrors+1 {
+		t.Errorf("Expected Errors to increase by 1, got %d", newErrors-initialErrors)
+	}
+}

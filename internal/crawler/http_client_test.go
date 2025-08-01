@@ -117,3 +117,81 @@ func TestHTTPClientTimeout(t *testing.T) {
 		t.Errorf("Expected timeout error, got nil")
 	}
 }
+
+func TestHTTPClientErrorCases(t *testing.T) {
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	ctx := context.Background()
+
+	// Test invalid URL
+	_, err := client.Get(ctx, "invalid-url")
+	if err == nil {
+		t.Errorf("Expected error for invalid URL, got nil")
+	}
+
+	// Test non-existent domain
+	_, err = client.Get(ctx, "http://non-existent-domain-12345.com")
+	if err == nil {
+		t.Errorf("Expected error for non-existent domain, got nil")
+	}
+
+	// Test server error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Internal Server Error"))
+	}))
+	defer server.Close()
+
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Errorf("Unexpected error for server error response: %v", err)
+	}
+	if resp.StatusCode != 500 {
+		t.Errorf("Expected status code 500, got %d", resp.StatusCode)
+	}
+
+	// Test cancelled context
+	cancelledCtx, cancel := context.WithCancel(ctx)
+	cancel() // Cancel immediately
+
+	_, err = client.Get(cancelledCtx, server.URL)
+	if err == nil && cancelledCtx.Err() != nil {
+		t.Errorf("Expected error for cancelled context, got nil")
+	}
+}
+
+func TestHTTPClientHeaders(t *testing.T) {
+	// Test that additional headers are handled properly
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set various response headers
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", "25")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"message": "success"}`))
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	ctx := context.Background()
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL: %v", err)
+	}
+
+	if resp.ContentType != "application/json" {
+		t.Errorf("Expected content type 'application/json', got '%s'", resp.ContentType)
+	}
+
+	if resp.ContentEncoding != "gzip" {
+		t.Errorf("Expected content encoding 'gzip', got '%s'", resp.ContentEncoding)
+	}
+
+	if resp.ContentLength != 25 {
+		t.Errorf("Expected content length 25, got %d", resp.ContentLength)
+	}
+}

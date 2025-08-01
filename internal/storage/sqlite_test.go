@@ -377,4 +377,138 @@ func TestSQLiteStorage(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("SavePageError", func(t *testing.T) {
+		// Test SavePageError function
+		errorStorage, err := NewSQLiteStorage(":memory:")
+		if err != nil {
+			t.Fatalf("Failed to create error storage: %v", err)
+		}
+		defer errorStorage.Close()
+
+		// Add URL to queue first
+		urls := []string{"https://error.test/page"}
+		err = errorStorage.AddToQueue(urls)
+		if err != nil {
+			t.Errorf("Failed to add URL to queue: %v", err)
+		}
+
+		// Get item from queue
+		item, err := errorStorage.GetNextFromQueue()
+		if err != nil {
+			t.Errorf("Failed to get item from queue: %v", err)
+		}
+		if item == nil {
+			t.Errorf("Expected 1 item, got nil")
+			return
+		}
+
+		// Save page error
+		err = errorStorage.SavePageError(item.ID, "network_error", "Connection timeout")
+		if err != nil {
+			t.Errorf("Failed to save page error: %v", err)
+		}
+
+		// Check queue status - should have one error
+		_, _, _, errors, err := errorStorage.GetQueueStatus()
+		if err != nil {
+			t.Errorf("Failed to get queue status: %v", err)
+		}
+		if errors != 1 {
+			t.Errorf("Expected 1 error, got %d", errors)
+		}
+	})
+
+	t.Run("SaveLinks", func(t *testing.T) {
+		// Test SaveLinks function
+		linkStorage, err := NewSQLiteStorage(":memory:")
+		if err != nil {
+			t.Fatalf("Failed to create link storage: %v", err)
+		}
+		defer linkStorage.Close()
+
+		// Create test links
+		links := []*crawler.LinkData{
+			{
+				SourceURL:    "https://test.com/page1",
+				TargetURL:    "https://test.com/page2",
+				LinkType:     "internal",
+				AnchorText:   "Link to page 2",
+			},
+			{
+				SourceURL:    "https://test.com/page1",
+				TargetURL:    "https://external.com/page",
+				LinkType:     "external",
+				AnchorText:   "External link",
+			},
+		}
+
+		// Save multiple links
+		err = linkStorage.SaveLinks(links)
+		if err != nil {
+			t.Errorf("Failed to save links: %v", err)
+		}
+	})
+
+	t.Run("GetURLStatus", func(t *testing.T) {
+		// Test GetURLStatus function
+		statusStorage, err := NewSQLiteStorage(":memory:")
+		if err != nil {
+			t.Fatalf("Failed to create status storage: %v", err)
+		}
+		defer statusStorage.Close()
+
+		testURL := "https://status.test/page"
+
+		// Check status of non-existent URL
+		status, exists := statusStorage.GetURLStatus(testURL)
+		_ = exists // We're not testing the exists flag in these cases
+		if status != "" {
+			t.Errorf("Expected empty status for non-existent URL, got %s", status)
+		}
+
+		// Add URL to queue
+		err = statusStorage.AddToQueue([]string{testURL})
+		if err != nil {
+			t.Errorf("Failed to add URL to queue: %v", err)
+		}
+
+		// Check status - should be "queued"
+		status, exists = statusStorage.GetURLStatus(testURL)
+		_ = exists // We're not testing the exists flag in these cases
+		if status != "queued" {
+			t.Errorf("Expected status 'queued', got '%s'", status)
+		}
+
+		// Get item and update status
+		item, err := statusStorage.GetNextFromQueue()
+		if err != nil {
+			t.Errorf("Failed to get item from queue: %v", err)
+		}
+		if item != nil {
+			// Update to processing (should already be processing)
+			status, exists = statusStorage.GetURLStatus(testURL)
+			if err != nil {
+				t.Errorf("Failed to get URL status: %v", err)
+			}
+			if status != "processing" {
+				t.Errorf("Expected status 'processing', got '%s'", status)
+			}
+
+			// Complete the item
+			err = statusStorage.UpdatePageStatus(item.ID, "completed")
+			if err != nil {
+				t.Errorf("Failed to update page status: %v", err)
+			}
+
+			// Check completed status
+			status, exists = statusStorage.GetURLStatus(testURL)
+			if err != nil {
+				t.Errorf("Failed to get URL status: %v", err)
+			}
+			if status != "completed" {
+				t.Errorf("Expected status 'completed', got '%s'", status)
+			}
+		}
+	})
 }
