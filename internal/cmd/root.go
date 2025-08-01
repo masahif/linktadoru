@@ -128,7 +128,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 
 	// Create database directory if it doesn't exist
 	dbDir := filepath.Dir(cfg.DatabasePath)
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := os.MkdirAll(dbDir, 0750); err != nil {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
 

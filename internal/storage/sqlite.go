@@ -33,7 +33,7 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 
 	// Initialize schema
 	if err := storage.InitSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
