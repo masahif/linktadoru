@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS pages (
     ) STORED,
     server TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.server')) STORED,
     content_encoding TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.content-encoding')) STORED,
+    x_cache TEXT GENERATED ALWAYS AS (json_extract(response_http_headers, '$.x-cache')) STORED,
     
     crawled_at DATETIME,
     
@@ -62,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_pages_status_code ON pages(status_code) WHERE sta
 CREATE INDEX IF NOT EXISTS idx_pages_content_type ON pages(content_type) WHERE content_type IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pages_server ON pages(server) WHERE server IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pages_content_length ON pages(content_length) WHERE content_length IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pages_x_cache ON pages(x_cache) WHERE x_cache IS NOT NULL;
 
 -- View for completed pages only (for analysis/reporting)
 CREATE VIEW IF NOT EXISTS completed_pages AS
@@ -69,7 +71,7 @@ SELECT
     id, url, status_code, title, meta_description, meta_robots,
     canonical_url, content_hash, ttfb_ms, download_time_ms,
     response_size_bytes, response_http_headers, content_type, content_length,
-    last_modified, server, content_encoding, crawled_at
+    last_modified, server, content_encoding, x_cache, crawled_at
 FROM pages
 WHERE status = 'completed';
 
