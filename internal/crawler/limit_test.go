@@ -115,13 +115,13 @@ func TestLimitLogic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the logic that would be used in worker
 			shouldStop := tt.limit > 0 && tt.pagesCrawled >= tt.limit
-			
+
 			if shouldStop != tt.shouldStop {
-				t.Errorf("Expected shouldStop=%v, got %v for limit=%d, pagesCrawled=%d", 
+				t.Errorf("Expected shouldStop=%v, got %v for limit=%d, pagesCrawled=%d",
 					tt.shouldStop, shouldStop, tt.limit, tt.pagesCrawled)
 			}
-			
-			t.Logf("Test %s passed: limit=%d, pagesCrawled=%d, shouldStop=%v", 
+
+			t.Logf("Test %s passed: limit=%d, pagesCrawled=%d, shouldStop=%v",
 				tt.name, tt.limit, tt.pagesCrawled, shouldStop)
 		})
 	}

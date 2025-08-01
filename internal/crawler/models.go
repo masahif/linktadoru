@@ -30,12 +30,12 @@ type PageData struct {
 
 // LinkData represents link relationships
 type LinkData struct {
-	SourceURL     string    // URL of the page containing the link
-	TargetURL     string    // URL that the link points to
-	AnchorText    string    // Text content of the <a> tag
-	LinkType      string    // 'internal' (same domain) or 'external' (different domain)
-	RelAttribute  string    // Value of rel attribute ('nofollow', 'sponsored', etc.)
-	CrawledAt     time.Time // Timestamp when link was discovered
+	SourceURL    string    // URL of the page containing the link
+	TargetURL    string    // URL that the link points to
+	AnchorText   string    // Text content of the <a> tag
+	LinkType     string    // 'internal' (same domain) or 'external' (different domain)
+	RelAttribute string    // Value of rel attribute ('nofollow', 'sponsored', etc.)
+	CrawledAt    time.Time // Timestamp when link was discovered
 }
 
 // CrawlError represents crawling errors
@@ -48,9 +48,9 @@ type CrawlError struct {
 
 // CrawlState represents the current crawling state for resume functionality
 type CrawlState struct {
-	QueueURLs     []string  // Queue of pending URLs
-	PagesCrawled  int       // Number of pages crawled so far
-	UpdatedAt     time.Time // Last update timestamp (UTC)
+	QueueURLs    []string  // Queue of pending URLs
+	PagesCrawled int       // Number of pages crawled so far
+	UpdatedAt    time.Time // Last update timestamp (UTC)
 }
 
 // CrawlConfig holds crawler configuration

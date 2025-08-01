@@ -7,31 +7,31 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	
+
 	if cfg.Concurrency != 10 {
 		t.Errorf("Expected concurrency 10, got %d", cfg.Concurrency)
 	}
-	
+
 	if cfg.RequestDelay != 1*time.Second {
 		t.Errorf("Expected request delay 1s, got %v", cfg.RequestDelay)
 	}
-	
+
 	if cfg.RequestTimeout != 30*time.Second {
 		t.Errorf("Expected request timeout 30s, got %v", cfg.RequestTimeout)
 	}
-	
+
 	if cfg.UserAgent != "LinkTadoru/1.0" {
 		t.Errorf("Expected user agent 'LinkTadoru/1.0', got %s", cfg.UserAgent)
 	}
-	
+
 	if !cfg.RespectRobots {
 		t.Errorf("Expected respect robots true, got %v", cfg.RespectRobots)
 	}
-	
+
 	if cfg.Limit != 0 {
 		t.Errorf("Expected limit 0, got %d", cfg.Limit)
 	}
-	
+
 	if cfg.DatabasePath != "./crawl.db" {
 		t.Errorf("Expected database path './crawl.db', got %s", cfg.DatabasePath)
 	}
@@ -93,7 +93,7 @@ func TestConfigValidate(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			
+
 			// Check minimum delay enforcement
 			if tt.name == "minimum delay enforcement" && tt.config.RequestDelay < 100*time.Millisecond {
 				t.Errorf("Expected minimum delay to be enforced, got %v", tt.config.RequestDelay)

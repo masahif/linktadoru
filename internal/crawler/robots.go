@@ -137,7 +137,7 @@ func (r *RobotsParser) parseRobotsTxt(content string) *RobotRules {
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -156,24 +156,24 @@ func (r *RobotsParser) parseRobotsTxt(content string) *RobotRules {
 		case "user-agent":
 			currentUserAgent = strings.ToLower(value)
 			inUserAgent = (currentUserAgent == "*" || strings.Contains(currentUserAgent, "crawler"))
-		
+
 		case "disallow":
 			if inUserAgent && value != "" {
 				rules.Disallowed = append(rules.Disallowed, value)
 			}
-		
+
 		case "allow":
 			if inUserAgent && value != "" {
 				rules.Allowed = append(rules.Allowed, value)
 			}
-		
+
 		case "crawl-delay":
 			if inUserAgent {
 				if delay, err := time.ParseDuration(value + "s"); err == nil {
 					rules.CrawlDelay = delay
 				}
 			}
-		
+
 		case "sitemap":
 			rules.Sitemap = append(rules.Sitemap, value)
 		}
@@ -193,12 +193,12 @@ func matchesPattern(path, pattern string) bool {
 		if len(parts) == 1 {
 			return strings.HasPrefix(path, parts[0])
 		}
-		
+
 		// Check if path starts with first part
 		if !strings.HasPrefix(path, parts[0]) {
 			return false
 		}
-		
+
 		// Check if path contains subsequent parts in order
 		remaining := path[len(parts[0]):]
 		for i := 1; i < len(parts); i++ {
@@ -211,16 +211,16 @@ func matchesPattern(path, pattern string) bool {
 			}
 			remaining = remaining[idx+len(parts[i]):]
 		}
-		
+
 		return true
 	}
-	
+
 	// Handle $ (end of URL)
 	if strings.HasSuffix(pattern, "$") {
 		pattern = strings.TrimSuffix(pattern, "$")
 		return path == pattern
 	}
-	
+
 	// Default: prefix matching
 	return strings.HasPrefix(path, pattern)
 }

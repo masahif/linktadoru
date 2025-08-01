@@ -20,7 +20,7 @@ type DefaultCrawler struct {
 	processor    PageProcessor
 	rateLimiter  *RateLimiter
 	robotsParser *RobotsParser
-	
+
 	// State
 	stats         CrawlStats
 	statsMutex    sync.RWMutex
@@ -62,7 +62,7 @@ func NewCrawler(config *CrawlConfig, storage Storage) (*DefaultCrawler, error) {
 
 // Start starts the crawling process
 // Startup process:
-// 1. Add seed URLs to queue with 'queued' status  
+// 1. Add seed URLs to queue with 'queued' status
 // 2. Start configured number of workers
 // 3. Workers compete for 'queued' items using atomic status updates
 // 4. Continue until queue is empty or limits reached
@@ -72,7 +72,7 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 
 	if len(seedURLs) > 0 {
 		log.Printf("Starting crawler with %d seed URLs", len(seedURLs))
-		
+
 		// Step 1: Add seed URLs to queue first (before starting workers)
 		var urls []string
 		for i, seedURL := range seedURLs {
@@ -81,7 +81,7 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 			}
 			urls = append(urls, seedURL)
 		}
-		
+
 		err := c.storage.AddToQueue(urls)
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
@@ -132,7 +132,7 @@ func (c *DefaultCrawler) Stop() error {
 func (c *DefaultCrawler) GetStats() CrawlStats {
 	c.statsMutex.RLock()
 	defer c.statsMutex.RUnlock()
-	
+
 	stats := c.stats
 	stats.Duration = time.Since(stats.StartTime)
 	return stats
@@ -185,13 +185,13 @@ func (c *DefaultCrawler) worker(id int) {
 				c.statsMutex.RLock()
 				crawled := c.stats.PagesCrawled
 				c.statsMutex.RUnlock()
-				
+
 				if crawled > 0 {
 					// We've processed at least one page and queue is empty
 					log.Printf("Worker %d: no more items in queue, exiting", id)
 					return
 				}
-				
+
 				// Wait and try again with configured delay
 				time.Sleep(c.config.RequestDelay)
 				continue
@@ -276,9 +276,14 @@ func (c *DefaultCrawler) worker(id int) {
 				}
 			}
 
-			log.Printf("Worker %d: processed %s (status: %d, links: %d)", 
-				id, item.URL, result.Page.StatusCode, len(result.Links))
-			
+			if result.Page != nil {
+				log.Printf("Worker %d: processed %s (status: %d, links: %d)",
+					id, item.URL, result.Page.StatusCode, len(result.Links))
+			} else {
+				log.Printf("Worker %d: processed %s (failed, links: %d)",
+					id, item.URL, len(result.Links))
+			}
+
 			// Delay after processing to allow other workers to coordinate
 			time.Sleep(c.config.RequestDelay)
 		}
@@ -303,9 +308,9 @@ func (c *DefaultCrawler) statsReporter() {
 				log.Printf("Failed to get queue status: %v", err)
 				continue
 			}
-			
+
 			stats := c.GetStats()
-			log.Printf("Stats: Crawled=%d, Queued=%d, Processing=%d, Completed=%d, Errors=%d, Duration=%v", 
+			log.Printf("Stats: Crawled=%d, Queued=%d, Processing=%d, Completed=%d, Errors=%d, Duration=%v",
 				stats.PagesCrawled, queued, processing, completed, errors, stats.Duration)
 		}
 	}

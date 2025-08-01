@@ -33,7 +33,7 @@ func (r *RateLimiter) Wait(ctx context.Context, urlStr string) error {
 
 	domain := parsedURL.Host
 	limiter := r.getLimiter(domain)
-	
+
 	return limiter.Wait(ctx)
 }
 

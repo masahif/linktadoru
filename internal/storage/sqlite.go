@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
+	// SQLite3 database driver
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -104,7 +105,7 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 // GetNextFromQueue atomically gets and marks the next URL for processing
 func (s *SQLiteStorage) GetNextFromQueue() (*crawler.URLItem, error) {
 	var item crawler.URLItem
-	
+
 	err := s.db.QueryRow(`
 		UPDATE pages 
 		SET status = 'processing', processing_started_at = ? 
@@ -132,7 +133,7 @@ func (s *SQLiteStorage) UpdatePageStatus(id int, status string) error {
 	_, err := s.db.Exec(`
 		UPDATE pages SET status = ? WHERE id = ?
 	`, status, id)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to update page status: %w", err)
 	}
@@ -197,7 +198,7 @@ func (s *SQLiteStorage) SavePageError(id int, errorType, errorMessage string) er
 			retry_count = retry_count + 1
 		WHERE id = ?
 	`, errorType, errorMessage, id)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to save page error: %w", err)
 	}
@@ -298,12 +299,12 @@ func (s *SQLiteStorage) GetQueueStatus() (queued int, processing int, completed 
 			SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
 		FROM pages
 	`
-	
+
 	err = s.db.QueryRow(query).Scan(&queued, &processing, &completed, &errors)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("failed to get queue status: %w", err)
 	}
-	
+
 	return queued, processing, completed, errors, nil
 }
 
@@ -337,14 +338,14 @@ func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
 // CleanupStaleProcessing resets processing items that have been stuck
 func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
 	cutoff := time.Now().Add(-timeout)
-	
+
 	_, err := s.db.Exec(`
 		UPDATE pages 
 		SET status = 'queued', processing_started_at = NULL 
 		WHERE status = 'processing' 
 		AND processing_started_at < ?
 	`, cutoff)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to cleanup stale processing: %w", err)
 	}

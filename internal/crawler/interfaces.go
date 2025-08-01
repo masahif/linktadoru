@@ -31,28 +31,28 @@ type Storage interface {
 	AddToQueue(urls []string) error
 	GetNextFromQueue() (*URLItem, error)
 	UpdatePageStatus(id int, status string) error
-	
+
 	// Page results (updates existing queued entry)
 	SavePageResult(id int, page *PageData) error
 	SavePageError(id int, errorType, errorMessage string) error
-	
+
 	// Link/Error results (separate tables)
 	SaveLink(link *LinkData) error
 	SaveLinks(links []*LinkData) error // Batch link saving
 	SaveError(err *CrawlError) error
-	
+
 	// Queue status
 	GetQueueStatus() (queued int, processing int, completed int, errors int, err error)
 	GetProcessingItems() ([]URLItem, error)
 	CleanupStaleProcessing(timeout time.Duration) error
-	
+
 	// Meta-data management
 	GetMeta(key string) (string, error)
 	SetMeta(key, value string) error
-	
+
 	// URL status check (any status)
 	GetURLStatus(url string) (status string, exists bool)
-	
+
 	// Database lifecycle
 	Close() error
 }

@@ -11,15 +11,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	
+
 	"github.com/masahif/linktadoru/internal/config"
 	"github.com/masahif/linktadoru/internal/crawler"
 	"github.com/masahif/linktadoru/internal/storage"
 )
 
 var (
-	cfgFile string
-	cfg     *config.CrawlConfig
+	cfgFile   string
+	cfg       *config.CrawlConfig
 	version   string
 	buildTime string
 )
@@ -53,7 +53,7 @@ func init() {
 
 	// Configuration file flag
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./config.yaml)")
-	
+
 	// Basic crawling flags
 	rootCmd.Flags().IntP("concurrency", "c", 10, "Number of concurrent workers")
 	rootCmd.Flags().DurationP("delay", "r", 1*time.Second, "Delay between requests")
@@ -61,14 +61,14 @@ func init() {
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
 	rootCmd.Flags().Bool("ignore-robots", false, "Ignore robots.txt rules")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
-	
+
 	// URL filtering flags
 	rootCmd.Flags().StringSlice("include-patterns", []string{}, "Regex patterns for URLs to include")
 	rootCmd.Flags().StringSlice("exclude-patterns", []string{}, "Regex patterns for URLs to exclude")
-	
+
 	// Database flags
 	rootCmd.Flags().StringP("database", "d", "./crawl.db", "Path to SQLite database file")
-	
+
 	// Bind flags to viper
 	_ = viper.BindPFlag("concurrency", rootCmd.Flags().Lookup("concurrency"))
 	_ = viper.BindPFlag("request_delay", rootCmd.Flags().Lookup("delay"))
@@ -106,33 +106,32 @@ func initConfig() {
 func runCrawler(cmd *cobra.Command, args []string) error {
 	// Load configuration
 	cfg = config.DefaultConfig()
-	
+
 	// Set seed URLs from command line arguments
 	cfg.SeedURLs = args
-	
+
 	// Override with viper values
 	if err := viper.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-	
+
 	// Handle the inverted logic for respect_robots flag
 	if cmd.Flags().Changed("ignore-robots") {
 		ignoreRobots, _ := cmd.Flags().GetBool("ignore-robots")
 		cfg.RespectRobots = !ignoreRobots
 	}
-	
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	
-	
+
 	// Create database directory if it doesn't exist
 	dbDir := filepath.Dir(cfg.DatabasePath)
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
-	
+
 	fmt.Printf("Starting crawler with configuration:\n")
 	if len(cfg.SeedURLs) > 0 {
 		fmt.Printf("  Seed URLs: %v\n", cfg.SeedURLs)
@@ -144,14 +143,14 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Request Delay: %v\n", cfg.RequestDelay)
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)
 	fmt.Printf("  Respect Robots: %t\n", cfg.RespectRobots)
-	
+
 	// Initialize and start the crawler
 	crawler, err := initializeCrawler(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize crawler: %w", err)
 	}
 	defer func() { _ = crawler.Stop() }()
-	
+
 	// Start crawling
 	return crawler.Start(cmd.Context(), cfg.SeedURLs)
 }
@@ -163,7 +162,7 @@ func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
-	
+
 	// Convert config to crawler config
 	crawlConfig := &crawler.CrawlConfig{
 		SeedURLs:        cfg.SeedURLs,
@@ -177,6 +176,6 @@ func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, error) {
 		DatabasePath:    cfg.DatabasePath,
 		Limit:           cfg.Limit,
 	}
-	
+
 	return crawler.NewCrawler(crawlConfig, store)
 }

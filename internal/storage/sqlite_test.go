@@ -430,16 +430,16 @@ func TestSQLiteStorage(t *testing.T) {
 		// Create test links
 		links := []*crawler.LinkData{
 			{
-				SourceURL:    "https://test.com/page1",
-				TargetURL:    "https://test.com/page2",
-				LinkType:     "internal",
-				AnchorText:   "Link to page 2",
+				SourceURL:  "https://test.com/page1",
+				TargetURL:  "https://test.com/page2",
+				LinkType:   "internal",
+				AnchorText: "Link to page 2",
 			},
 			{
-				SourceURL:    "https://test.com/page1",
-				TargetURL:    "https://external.com/page",
-				LinkType:     "external",
-				AnchorText:   "External link",
+				SourceURL:  "https://test.com/page1",
+				TargetURL:  "https://external.com/page",
+				LinkType:   "external",
+				AnchorText: "External link",
 			},
 		}
 
@@ -487,10 +487,7 @@ func TestSQLiteStorage(t *testing.T) {
 		}
 		if item != nil {
 			// Update to processing (should already be processing)
-			status, exists = statusStorage.GetURLStatus(testURL)
-			if err != nil {
-				t.Errorf("Failed to get URL status: %v", err)
-			}
+			status, _ = statusStorage.GetURLStatus(testURL)
 			if status != "processing" {
 				t.Errorf("Expected status 'processing', got '%s'", status)
 			}
@@ -502,10 +499,7 @@ func TestSQLiteStorage(t *testing.T) {
 			}
 
 			// Check completed status
-			status, exists = statusStorage.GetURLStatus(testURL)
-			if err != nil {
-				t.Errorf("Failed to get URL status: %v", err)
-			}
+			status, _ = statusStorage.GetURLStatus(testURL)
 			if status != "completed" {
 				t.Errorf("Expected status 'completed', got '%s'", status)
 			}
