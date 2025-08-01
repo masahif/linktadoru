@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fukuda-deltax/linktadoru/internal/crawler"
+	"github.com/masahif/linktadoru/internal/crawler"
 )
 
 func TestSQLiteStorage(t *testing.T) {

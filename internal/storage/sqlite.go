@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fukuda-deltax/linktadoru/internal/crawler"
+	"github.com/masahif/linktadoru/internal/crawler"
 	_ "github.com/mattn/go-sqlite3"
 )
 
