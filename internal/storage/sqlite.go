@@ -4,12 +4,13 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
-	// SQLite3 database driver
-	_ "github.com/mattn/go-sqlite3"
+	// SQLite database driver (CGO-free)
+	_ "modernc.org/sqlite"
 )
 
 // SQLiteStorage implements the Storage interface using SQLite
@@ -19,7 +20,7 @@ type SQLiteStorage struct {
 
 // NewSQLiteStorage creates a new SQLite storage instance
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -64,6 +65,7 @@ func (s *SQLiteStorage) InitSchema() error {
 
 	return nil
 }
+
 
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {
@@ -142,6 +144,16 @@ func (s *SQLiteStorage) UpdatePageStatus(id int, status string) error {
 
 // SavePageResult saves the crawl results for a page
 func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
+	// Serialize HTTP headers to JSON
+	var headersJSON []byte
+	var err error
+	if page.HTTPHeaders != nil {
+		headersJSON, err = json.Marshal(page.HTTPHeaders)
+		if err != nil {
+			return fmt.Errorf("failed to marshal HTTP headers: %w", err)
+		}
+	}
+
 	query := `
 		UPDATE pages SET
 			status = 'completed',
@@ -154,16 +166,12 @@ func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
 			ttfb_ms = ?,
 			download_time_ms = ?,
 			response_size_bytes = ?,
-			content_type = ?,
-			content_length = ?,
-			last_modified = ?,
-			server = ?,
-			content_encoding = ?,
+			response_http_headers = ?,
 			crawled_at = ?
 		WHERE id = ?
 	`
 
-	_, err := s.db.Exec(query,
+	_, err = s.db.Exec(query,
 		page.StatusCode,
 		page.Title,
 		page.MetaDesc,
@@ -173,11 +181,7 @@ func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
 		page.TTFB.Milliseconds(),
 		page.DownloadTime.Milliseconds(),
 		page.ResponseSize,
-		page.ContentType,
-		page.ContentLength,
-		page.LastModified,
-		page.Server,
-		page.ContentEncoding,
+		string(headersJSON),
 		page.CrawledAt,
 		id,
 	)

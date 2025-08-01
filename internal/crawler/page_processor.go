@@ -43,19 +43,24 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 			strings.HasPrefix(ct, "application/xhtml+xml")
 	}
 
+	// Convert HTTP headers to map[string]string
+	headerMap := make(map[string]string)
+	for name, values := range resp.Headers {
+		if len(values) > 0 {
+			// Use the first value for simplicity, could concatenate multiple values
+			headerMap[strings.ToLower(name)] = values[0]
+		}
+	}
+
 	// Create page data
 	pageData := &PageData{
-		URL:             url,
-		StatusCode:      resp.StatusCode,
-		TTFB:            resp.Metrics.TTFB,
-		DownloadTime:    resp.Metrics.DownloadTime,
-		ResponseSize:    int64(len(resp.Body)),
-		ContentType:     resp.ContentType,
-		ContentLength:   resp.ContentLength,
-		LastModified:    resp.LastModified,
-		Server:          resp.Server,
-		ContentEncoding: resp.ContentEncoding,
-		CrawledAt:       time.Now().UTC(),
+		URL:          url,
+		StatusCode:   resp.StatusCode,
+		TTFB:         resp.Metrics.TTFB,
+		DownloadTime: resp.Metrics.DownloadTime,
+		ResponseSize: int64(len(resp.Body)),
+		HTTPHeaders:  headerMap,
+		CrawledAt:    time.Now().UTC(),
 	}
 
 	result := &PageResult{

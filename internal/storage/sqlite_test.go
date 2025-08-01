@@ -22,22 +22,24 @@ func TestSQLiteStorage(t *testing.T) {
 
 	t.Run("SaveAndRetrievePage", func(t *testing.T) {
 		page := &crawler.PageData{
-			URL:             "https://example.com",
-			StatusCode:      200,
-			Title:           "Example Page",
-			MetaDesc:        "Example description",
-			MetaRobots:      "index,follow",
-			CanonicalURL:    "https://example.com",
-			ContentHash:     "abc123",
-			TTFB:            100 * time.Millisecond,
-			DownloadTime:    500 * time.Millisecond,
-			ResponseSize:    1024,
-			ContentType:     "text/html",
-			ContentLength:   1024,
-			LastModified:    time.Now(),
-			Server:          "nginx",
-			ContentEncoding: "gzip",
-			CrawledAt:       time.Now(),
+			URL:          "https://example.com",
+			StatusCode:   200,
+			Title:        "Example Page",
+			MetaDesc:     "Example description",
+			MetaRobots:   "index,follow",
+			CanonicalURL: "https://example.com",
+			ContentHash:  "abc123",
+			TTFB:         100 * time.Millisecond,
+			DownloadTime: 500 * time.Millisecond,
+			ResponseSize: 1024,
+			HTTPHeaders: map[string]string{
+				"content-type":     "text/html",
+				"content-length":   "1024",
+				"last-modified":    time.Now().Format(time.RFC1123),
+				"server":           "nginx",
+				"content-encoding": "gzip",
+			},
+			CrawledAt: time.Now(),
 		}
 
 		// First add to queue to get an ID

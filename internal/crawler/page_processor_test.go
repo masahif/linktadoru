@@ -114,8 +114,8 @@ func TestPageProcessor(t *testing.T) {
 			t.Fatalf("Failed to process non-HTML page: %v", err)
 		}
 
-		if result.Page.ContentType != "application/json" {
-			t.Errorf("Expected content type 'application/json', got '%s'", result.Page.ContentType)
+		if result.Page.HTTPHeaders["content-type"] != "application/json" {
+			t.Errorf("Expected content type 'application/json', got '%s'", result.Page.HTTPHeaders["content-type"])
 		}
 
 		// Should not parse non-HTML content

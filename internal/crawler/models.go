@@ -10,22 +10,18 @@ type URLItem struct {
 
 // PageData represents crawled page information
 type PageData struct {
-	URL             string
-	StatusCode      int           // HTTP status code (200, 404, 500, etc.)
-	Title           string        // HTML <title> tag content
-	MetaDesc        string        // HTML <meta name="description"> content
-	MetaRobots      string        // HTML <meta name="robots"> content
-	CanonicalURL    string        // HTML <link rel="canonical"> href attribute
-	ContentHash     string        // Hash of page content for duplicate detection
-	TTFB            time.Duration // Time to First Byte
-	DownloadTime    time.Duration // Total download time
-	ResponseSize    int64         // Response body size in bytes
-	ContentType     string        // HTTP Content-Type header
-	ContentLength   int64         // HTTP Content-Length header
-	LastModified    time.Time     // HTTP Last-Modified header
-	Server          string        // HTTP Server header
-	ContentEncoding string        // HTTP Content-Encoding header (gzip, etc.)
-	CrawledAt       time.Time     // Timestamp when crawled (UTC)
+	URL          string
+	StatusCode   int           // HTTP status code (200, 404, 500, etc.)
+	Title        string        // HTML <title> tag content
+	MetaDesc     string        // HTML <meta name="description"> content
+	MetaRobots   string        // HTML <meta name="robots"> content
+	CanonicalURL string        // HTML <link rel="canonical"> href attribute
+	ContentHash  string        // Hash of page content for duplicate detection
+	TTFB         time.Duration // Time to First Byte
+	DownloadTime time.Duration // Total download time
+	ResponseSize int64         // Response body size in bytes
+	HTTPHeaders  map[string]string // All HTTP response headers
+	CrawledAt    time.Time     // Timestamp when crawled (UTC)
 }
 
 // LinkData represents link relationships
