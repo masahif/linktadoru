@@ -5,8 +5,8 @@ This directory contains comprehensive documentation for LinkTadoru.
 ## 📚 Available Documentation
 
 ### User Guides
-- **[Basic Usage Examples](basic-usage.md)** - Command-line usage, configuration, Docker setup, and troubleshooting
-- **[基本的な使用例](basic-usage.ja.md)** - コマンドライン使用法、設定、Dockerセットアップ、トラブルシューティング（日本語）
+- **[Basic Usage Examples](basic-usage.md)** - Command-line usage, configuration, and troubleshooting
+- **[基本的な使用例](basic-usage.ja.md)** - コマンドライン使用法、設定、トラブルシューティング（日本語）
 
 ### Technical Documentation  
 - **[Technical Specification](technical-specification.md)** - Architecture, implementation details, and design decisions

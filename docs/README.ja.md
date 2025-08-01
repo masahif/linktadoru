@@ -5,8 +5,8 @@
 ## 📚 利用可能なドキュメント
 
 ### ユーザーガイド
-- **[基本的な使用例](basic-usage.ja.md)** - コマンドライン使用法、設定、Dockerセットアップ、トラブルシューティング
-- **[Basic Usage Examples](basic-usage.md)** - Command-line usage, configuration, Docker setup, and troubleshooting (English)
+- **[基本的な使用例](basic-usage.ja.md)** - コマンドライン使用法、設定、トラブルシューティング
+- **[Basic Usage Examples](basic-usage.md)** - Command-line usage, configuration, and troubleshooting (English)
 
 ### 技術ドキュメント  
 - **[技術仕様書](technical-specification.ja.md)** - アーキテクチャ、実装詳細、設計判断

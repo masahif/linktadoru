@@ -5,7 +5,6 @@
 - Go 1.23 or higher
 - Make (optional but recommended)
 - golangci-lint (for linting)
-- Docker (for containerized development)
 
 ## Project Structure
 
@@ -182,26 +181,6 @@ act -j test
 
 **Note**: You must be in a git repository for act to work.
 
-## Docker Development
-
-### Using DevContainer
-
-1. Install VS Code with Remote-Containers extension
-2. Open project in VS Code
-3. Click "Reopen in Container" when prompted
-
-### Manual Docker Build
-
-```bash
-# Build image
-docker build -t linktadoru .
-
-# Run tests in container
-docker run --rm linktadoru go test ./...
-
-# Interactive development
-docker run -it --rm -v $(pwd):/workspace -w /workspace golang:1.23 bash
-```
 
 ## Database Management
 

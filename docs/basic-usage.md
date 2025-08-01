@@ -96,35 +96,6 @@ Crawl only blog posts and articles:
   https://example.com
 ```
 
-## Docker Examples
-
-### Build and Run in Docker
-
-```bash
-# Build image
-docker build -t linktadoru .
-
-# Run with volume for data persistence
-docker run -v $(pwd)/data:/app/data \
-  linktadoru \
-  --database /app/data/crawl.db \
-  --limit 10 \
-  https://example.com
-```
-
-### Docker Compose Setup
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  linktadoru:
-    build: .
-    volumes:
-      - ./data:/app/data
-      - ./config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml", "https://example.com"]
-```
 
 ## Output Analysis
 

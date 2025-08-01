@@ -96,35 +96,6 @@ LinkTadoruは既存のデータベースから自動的に再開します：
   https://example.com
 ```
 
-## Dockerの使用例
-
-### ビルドと実行
-
-```bash
-# イメージをビルド
-docker build -t linktadoru .
-
-# データ永続化のためのボリュームマウントで実行
-docker run -v $(pwd)/data:/app/data \
-  linktadoru \
-  --database /app/data/crawl.db \
-  --limit 10 \
-  https://example.com
-```
-
-### Docker Compose設定
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  linktadoru:
-    build: .
-    volumes:
-      - ./data:/app/data
-      - ./config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml", "https://example.com"]
-```
 
 ## 出力の分析
 
