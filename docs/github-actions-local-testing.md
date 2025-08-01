@@ -36,25 +36,40 @@ git add .
 git commit -m "Initial commit"
 ```
 
+### プロジェクト設定（.actrc）
+
+プロジェクトルートに`.actrc`ファイルが設定済みです:
+
+```bash
+# Ubuntu 22.04イメージを使用（互換性向上）
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+
+# 環境変数設定
+--env GO_VERSION=1.23
+
+# gitignoreを使用しない
+--use-gitignore=false
+
+# 詳細出力
+--verbose
+```
+
 ### 基本的な使用法
 ```bash
 # ワークフローの一覧表示
 act --list
 
-# 特定のジョブだけ実行（ドライラン）
-act -n -j test
-
-# CIワークフローの実行
+# 推奨: CIワークフローの実行（.actrcが自動適用される）
 act -W .github/workflows/ci.yml
 
-# プッシュイベントをシミュレート
-act push
+# 特定のジョブのみ実行
+act -W .github/workflows/ci.yml -j test
 
-# 特定のジョブの実行
-act -j test
+# ドライラン（実行せずに確認）
+act -W .github/workflows/ci.yml --dryrun
 
-# リリースワークフローのテスト（タグイベント）
-act -e .github/workflows/release.yml
+# PRイベントをシミュレート
+act pull_request -W .github/workflows/ci.yml
 ```
 
 ### 環境変数の設定
@@ -81,14 +96,43 @@ act --secret-file .secrets
 - Dockerイメージが必要（初回実行時にダウンロード）
 - 一部のGitHub固有の機能は動作しない場合がある
 
-## 4. 推奨ワークフロー
+## 4. 手動CI実行（workflow_dispatch）
 
-1. **ローカルテスト**: actでbasicな動作確認
-2. **ブランチプッシュ**: developブランチで実際のCI確認
-3. **プルリクエスト**: mainブランチへのPRでフルテスト
+CI戦略が変更され、mainブランチへの直接pushではCIが実行されなくなりました。必要に応じて手動でCIを実行できます。
+
+### GitHub CLI使用
+```bash
+# mainブランチでCIを手動実行
+gh workflow run CI --ref main
+
+# 特定のブランチでCIを実行
+gh workflow run CI --ref feature-branch
+
+# 実行状況確認
+gh run list --workflow=CI --limit 5
+```
+
+### GitHub Web UI使用
+1. GitHubリポジトリページ → **Actions**タブ
+2. 左サイドバーの**CI**をクリック
+3. 右上の**Run workflow**ボタンをクリック
+4. ブランチを選択して**Run workflow**
+
+## 5. 推奨ワークフロー
+
+現在のCI戦略（actプロジェクトを参考）:
+
+1. **ローカルテスト**: actでbasic動作確認
+2. **プルリクエスト**: mainブランチへのPRで自動CI実行
+3. **手動実行**: 必要に応じてworkflow_dispatchでCI実行
 4. **リリース**: タグプッシュでリリースワークフロー
 
-## 5. デバッグ
+### メリット
+- **効率性**: 不要なCI実行を削減
+- **柔軟性**: 必要な時だけ手動実行
+- **品質保証**: PRで確実なレビュー
+
+## 6. デバッグ
 
 ```bash
 # 詳細ログ出力

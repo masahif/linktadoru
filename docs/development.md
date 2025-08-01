@@ -126,6 +126,20 @@ Follow the coding standards:
 
 ### 3. Run Checks
 
+#### Local Testing (Recommended)
+```bash
+# Install act (if not already installed)
+brew install act  # macOS
+# or follow docs/github-actions-local-testing.md
+
+# Run CI locally with act
+act -W .github/workflows/ci.yml
+
+# Test specific job
+act -W .github/workflows/ci.yml -j test
+```
+
+#### Traditional Testing
 ```bash
 # Run all checks
 make check
@@ -156,7 +170,17 @@ Follow conventional commits:
 
 ```bash
 git push origin feature/your-feature
+
+# Create PR with GitHub CLI
+gh pr create --title "feat: your feature" --body "Description of changes"
 ```
+
+**CI Strategy**: 
+- ✅ **PR → main**: 自動でCI実行
+- ❌ **push → main**: CI実行されません  
+- 🔧 **手動実行**: `gh workflow run CI --ref main`
+
+詳細は [github-actions-local-testing.md](github-actions-local-testing.md) を参照。
 
 Create a pull request on GitHub. CI will run automatically.
 
