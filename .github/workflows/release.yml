@@ -99,29 +99,12 @@ jobs:
           -ldflags "-X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -s -w" \
           -o "$BINARY_NAME" \
           ./cmd/crawler
-        
-        # Create checksum
-        if command -v sha256sum >/dev/null; then
-          sha256sum "$BINARY_NAME" > "$BINARY_NAME.sha256"
-        else
-          shasum -a 256 "$BINARY_NAME" > "$BINARY_NAME.sha256"
-        fi
-        
-        # Create archive
-        if [ "${{ matrix.goos }}" = "windows" ]; then
-          zip "linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" \
-            "$BINARY_NAME" "$BINARY_NAME.sha256" README.md LICENSE
-        else
-          tar czf "linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" \
-            "$BINARY_NAME" "$BINARY_NAME.sha256" README.md LICENSE
-        fi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: |
-          linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}*
+        path: linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
         retention-days: 5
 
   release:
@@ -183,30 +166,21 @@ jobs:
         
         Choose the appropriate binary for your platform:
         
-        - **Linux x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-linux-amd64.tar.gz\`
-        - **macOS ARM64**: \`linktadoru-${{ steps.version.outputs.tag }}-darwin-arm64.tar.gz\`
-        - **Windows x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.zip\`
+        - **Linux x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-linux-amd64\`
+        - **macOS ARM64**: \`linktadoru-${{ steps.version.outputs.tag }}-darwin-arm64\`
+        - **Windows x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.exe\`
         
         ## Installation
         
         ### Linux / macOS
         \`\`\`bash
-        # Extract the archive
-        tar xzf linktadoru-${{ steps.version.outputs.tag }}-linux-amd64.tar.gz
-        
-        # Verify checksum
-        sha256sum -c linktadoru-${{ steps.version.outputs.tag }}-linux-amd64.sha256
-        
-        # Make executable and test
+        # Download and make executable
         chmod +x linktadoru-${{ steps.version.outputs.tag }}-linux-amd64
         ./linktadoru-${{ steps.version.outputs.tag }}-linux-amd64 --version
         \`\`\`
         
         ### Windows
         \`\`\`powershell
-        # Extract the zip file
-        Expand-Archive linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.zip
-        
         # Test the binary
         .\\linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.exe --version
         \`\`\`
