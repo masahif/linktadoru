@@ -9,7 +9,7 @@
 デフォルト設定で単一のWebサイトをクロール：
 
 ```bash
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 ```
 
 ### 2. カスタム設定での制限付きクロール
@@ -17,7 +17,7 @@
 2つの並行ワーカーで最大10ページをクロール：
 
 ```bash
-./linktadoru --limit 10 --concurrency 2 --delay 2s https://example.com
+./linktadoru --limit 10 --concurrency 2 --delay 2s https://httpbin.org
 ```
 
 ### 3. 設定ファイルの使用
@@ -35,7 +35,7 @@ limit: 50
 database_path: "./mysite-crawl.db"
 
 include_patterns:
-  - "^https?://[^/]*example\.com/.*"
+  - "^https?://[^/]*httpbin\.org/.*"
 
 exclude_patterns:
   - "\\.pdf$"
@@ -46,7 +46,7 @@ exclude_patterns:
 設定ファイルを使用して実行：
 
 ```bash
-./linktadoru --config mysite-config.yaml https://example.com
+./linktadoru --config mysite-config.yaml https://httpbin.org
 ```
 
 ## 高度な使用例
@@ -69,7 +69,7 @@ LinkTadoruは既存のデータベースから自動的に再開します：
 
 ```bash
 # 最初の実行（中断される）
-./linktadoru --database mycrawl.db --limit 1000 https://example.com
+./linktadoru --database mycrawl.db --limit 1000 https://httpbin.org
 
 # 中断した場所から再開
 ./linktadoru --database mycrawl.db
@@ -82,7 +82,7 @@ LinkTadoruは既存のデータベースから自動的に再開します：
   --ignore-robots \
   --concurrency 20 \
   --delay 500ms \
-  https://example.com
+  https://httpbin.org
 ```
 
 ### 4. パターンを使った集中クロール
@@ -91,9 +91,9 @@ LinkTadoruは既存のデータベースから自動的に再開します：
 
 ```bash
 ./linktadoru \
-  --include-patterns "^https?://[^/]*example\.com/(blog|articles)/.*" \
+  --include-patterns "^https?://[^/]*httpbin\.org/(blog|articles)/.*" \
   --exclude-patterns "\\.jpg$|\\.png$|\\.css$|\\.js$" \
-  https://example.com
+  https://httpbin.org
 ```
 
 

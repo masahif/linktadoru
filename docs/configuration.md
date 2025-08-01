@@ -42,8 +42,8 @@ limit: 0
 
 # URL filtering
 include_patterns:
-  - "^https?://[^/]*example\.com/.*"
-  - "^https?://[^/]*subdomain\.example\.com/.*"
+  - "^https?://[^/]*httpbin\.org/.*"
+  - "^https?://[^/]*subdomain\.httpbin\.org/.*"
 
 exclude_patterns:
   - "\.pdf$"
@@ -67,7 +67,7 @@ export LT_RESPECT_ROBOTS=true
 export LT_DATABASE_PATH="./mysite.db"
 export LT_LIMIT=1000
 
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 ```
 
 ## Configuration Options
@@ -91,8 +91,8 @@ Only URLs matching at least one include pattern will be crawled:
 
 ```yaml
 include_patterns:
-  - "^https?://[^/]*example\.com/.*"     # Main domain
-  - "^https?://[^/]*\.example\.com/.*"   # All subdomains
+  - "^https?://[^/]*httpbin\.org/.*"     # Main domain
+  - "^https?://[^/]*\.httpbin\.org/.*"   # All subdomains
   - ".*/products/.*"                     # Specific path
 ```
 
@@ -133,5 +133,5 @@ request_delay: 200ms-500ms
 concurrency: 2
 request_delay: 5s
 respect_robots: true
-user_agent: "PoliteBot/1.0 (https://example.com/bot)"
+user_agent: "PoliteBot/1.0 (https://httpbin.org/bot)"
 ```

@@ -272,7 +272,7 @@ The release workflow automatically:
 Enable debug logging:
 
 ```bash
-LOG_LEVEL=debug ./linktadoru https://example.com
+LOG_LEVEL=debug ./linktadoru https://httpbin.org
 ```
 
 ## Contributing

@@ -14,8 +14,8 @@ limit: 0                # Stop after N pages (0=unlimited)
 
 # URL filtering configuration
 include_patterns:       # Regular expression patterns for URLs to include
-  - "^https?://[^/]*example\.com/.*"
-  - "^https?://[^/]*subdomain\.example\.com/.*"
+  - "^https?://[^/]*httpbin\.org/.*"
+  - "^https?://[^/]*subdomain\.httpbin\.org/.*"
 
 exclude_patterns:       # Regular expression patterns for URLs to exclude
   - "\\.pdf$"           # Exclude PDF files

@@ -9,7 +9,7 @@ This document provides practical examples of using LinkTadoru for web crawling a
 Crawl a single website with default settings:
 
 ```bash
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 ```
 
 ### 2. Limited Crawl with Custom Settings
@@ -17,7 +17,7 @@ Crawl a single website with default settings:
 Crawl up to 10 pages with 2 concurrent workers:
 
 ```bash
-./linktadoru --limit 10 --concurrency 2 --delay 2s https://example.com
+./linktadoru --limit 10 --concurrency 2 --delay 2s https://httpbin.org
 ```
 
 ### 3. Using Configuration File
@@ -35,7 +35,7 @@ limit: 50
 database_path: "./mysite-crawl.db"
 
 include_patterns:
-  - "^https?://[^/]*example\.com/.*"
+  - "^https?://[^/]*httpbin\.org/.*"
 
 exclude_patterns:
   - "\\.pdf$"
@@ -46,7 +46,7 @@ exclude_patterns:
 Run with configuration:
 
 ```bash
-./linktadoru --config mysite-config.yaml https://example.com
+./linktadoru --config mysite-config.yaml https://httpbin.org
 ```
 
 ## Advanced Examples
@@ -69,7 +69,7 @@ LinkTadoru automatically resumes from existing database:
 
 ```bash
 # First run (interrupted)
-./linktadoru --database mycrawl.db --limit 1000 https://example.com
+./linktadoru --database mycrawl.db --limit 1000 https://httpbin.org
 
 # Resume from where it left off
 ./linktadoru --database mycrawl.db
@@ -82,7 +82,7 @@ LinkTadoru automatically resumes from existing database:
   --ignore-robots \
   --concurrency 20 \
   --delay 500ms \
-  https://example.com
+  https://httpbin.org
 ```
 
 ### 4. Focused Crawling with Patterns
@@ -91,9 +91,9 @@ Crawl only blog posts and articles:
 
 ```bash
 ./linktadoru \
-  --include-patterns "^https?://[^/]*example\.com/(blog|articles)/.*" \
+  --include-patterns "^https?://[^/]*httpbin\.org/(blog|articles)/.*" \
   --exclude-patterns "\\.jpg$|\\.png$|\\.css$|\\.js$" \
-  https://example.com
+  https://httpbin.org
 ```
 
 

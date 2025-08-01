@@ -37,13 +37,13 @@ make build
 
 ```bash
 # Webサイトをクロール
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 
 # オプション付き
-./linktadoru --limit 100 --concurrency 5 https://example.com
+./linktadoru --limit 100 --concurrency 5 https://httpbin.org
 
 # 設定ファイルを使用
-./linktadoru --config mysite.yaml https://example.com
+./linktadoru --config mysite.yaml https://httpbin.org
 ```
 
 ## ドキュメント
@@ -68,7 +68,7 @@ database_path: "./crawl.db"
 ```bash
 export LT_CONCURRENCY=5
 export LT_REQUEST_DELAY=2s
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 ```
 
 ## 貢献

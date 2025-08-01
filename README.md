@@ -37,13 +37,13 @@ Requirements: Go 1.23+
 
 ```bash
 # Crawl a website
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 
 # With options
-./linktadoru --limit 100 --concurrency 5 https://example.com
+./linktadoru --limit 100 --concurrency 5 https://httpbin.org
 
 # Using config file
-./linktadoru --config mysite.yaml https://example.com
+./linktadoru --config mysite.yaml https://httpbin.org
 ```
 
 ## Documentation
@@ -68,7 +68,7 @@ Or use environment variables:
 ```bash
 export LT_CONCURRENCY=5
 export LT_REQUEST_DELAY=2s
-./linktadoru https://example.com
+./linktadoru https://httpbin.org
 ```
 
 ## Contributing
