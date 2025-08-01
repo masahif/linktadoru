@@ -1,0 +1,14 @@
+# act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use Ubuntu 22.04 image for better compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+
+# Set environment variables
+--env GO_VERSION=1.23
+
+# Use host network for better performance
+--use-gitignore=false
+
+# Verbose output for debugging
+--verbose

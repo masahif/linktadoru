@@ -9,7 +9,7 @@ on:
       - 'LICENSE'
       - '.gitignore'
   push:
-    branches: [ main, develop ]
+    branches: [ develop ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
