@@ -302,7 +302,7 @@ func TestLimitReached(t *testing.T) {
 
 	// Mock storage that provides items
 	store := &LimitTestStorage{items: make([]*URLItem, 0)}
-	store.AddToQueue([]string{"http://example.test/1", "http://example.test/2", "http://example.test/3"})
+	_ = store.AddToQueue([]string{"http://example.test/1", "http://example.test/2", "http://example.test/3"})
 
 	crawler, err := NewCrawler(config, store)
 	if err != nil {

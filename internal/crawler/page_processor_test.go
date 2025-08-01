@@ -34,7 +34,7 @@ func TestPageProcessor(t *testing.T) {
 
 		case "/404":
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
+			_, _ = w.Write([]byte("Not Found"))
 
 		case "/non-html":
 			w.Header().Set("Content-Type", "application/json")

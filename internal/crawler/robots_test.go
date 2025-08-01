@@ -28,7 +28,7 @@ Sitemap: https://example.com/sitemap.xml
 		if r.URL.Path == "/robots.txt" {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(robotsTxt))
+			_, _ = w.Write([]byte(robotsTxt))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
