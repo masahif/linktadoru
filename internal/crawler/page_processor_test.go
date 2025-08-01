@@ -16,7 +16,7 @@ func TestPageProcessor(t *testing.T) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Server", "test-server")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`
+			_, _ = w.Write([]byte(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -39,7 +39,7 @@ func TestPageProcessor(t *testing.T) {
 		case "/non-html":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
 
 		default:
 			w.WriteHeader(http.StatusNotFound)

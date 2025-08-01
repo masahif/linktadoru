@@ -70,15 +70,15 @@ func init() {
 	rootCmd.Flags().StringP("database", "d", "./crawl.db", "Path to SQLite database file")
 	
 	// Bind flags to viper
-	viper.BindPFlag("concurrency", rootCmd.Flags().Lookup("concurrency"))
-	viper.BindPFlag("request_delay", rootCmd.Flags().Lookup("delay"))
-	viper.BindPFlag("request_timeout", rootCmd.Flags().Lookup("timeout"))
-	viper.BindPFlag("user_agent", rootCmd.Flags().Lookup("user-agent"))
-	viper.BindPFlag("respect_robots", rootCmd.Flags().Lookup("ignore-robots"))
-	viper.BindPFlag("limit", rootCmd.Flags().Lookup("limit"))
-	viper.BindPFlag("include_patterns", rootCmd.Flags().Lookup("include-patterns"))
-	viper.BindPFlag("exclude_patterns", rootCmd.Flags().Lookup("exclude-patterns"))
-	viper.BindPFlag("database_path", rootCmd.Flags().Lookup("database"))
+	_ = viper.BindPFlag("concurrency", rootCmd.Flags().Lookup("concurrency"))
+	_ = viper.BindPFlag("request_delay", rootCmd.Flags().Lookup("delay"))
+	_ = viper.BindPFlag("request_timeout", rootCmd.Flags().Lookup("timeout"))
+	_ = viper.BindPFlag("user_agent", rootCmd.Flags().Lookup("user-agent"))
+	_ = viper.BindPFlag("respect_robots", rootCmd.Flags().Lookup("ignore-robots"))
+	_ = viper.BindPFlag("limit", rootCmd.Flags().Lookup("limit"))
+	_ = viper.BindPFlag("include_patterns", rootCmd.Flags().Lookup("include-patterns"))
+	_ = viper.BindPFlag("exclude_patterns", rootCmd.Flags().Lookup("exclude-patterns"))
+	_ = viper.BindPFlag("database_path", rootCmd.Flags().Lookup("database"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -150,7 +150,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize crawler: %w", err)
 	}
-	defer crawler.Stop()
+	defer func() { _ = crawler.Stop() }()
 	
 	// Start crawling
 	return crawler.Start(cmd.Context(), cfg.SeedURLs)

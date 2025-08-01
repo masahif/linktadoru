@@ -26,7 +26,7 @@ func TestHTTPClient(t *testing.T) {
 
 		// Write response
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html><body>Test Page</body></html>"))
+		_, _ = w.Write([]byte("<html><body>Test Page</body></html>"))
 	}))
 	defer server.Close()
 
@@ -78,7 +78,7 @@ func TestHTTPClientRedirect(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Final page"))
+		_, _ = w.Write([]byte("Final page"))
 	}))
 	defer server.Close()
 

@@ -80,7 +80,7 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO pages (url, status, added_at) 
@@ -238,7 +238,7 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO links (

@@ -114,7 +114,7 @@ func TestInitializeCrawler(t *testing.T) {
 	
 	// Clean up
 	if crawler != nil {
-		crawler.Stop()
+		_ = crawler.Stop()
 	}
 }
 

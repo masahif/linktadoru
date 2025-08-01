@@ -206,7 +206,9 @@ func (c *DefaultCrawler) worker(id int) {
 				if !allowed {
 					log.Printf("Worker %d: %s disallowed by robots.txt", id, item.URL)
 					// Mark as error and continue
-					c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt")
+					if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
+						log.Printf("Worker %d: failed to save robots error: %v", id, err)
+					}
 					time.Sleep(c.config.RequestDelay)
 					continue
 				}
@@ -223,7 +225,9 @@ func (c *DefaultCrawler) worker(id int) {
 			if err != nil {
 				log.Printf("Worker %d: failed to process %s: %v", id, item.URL, err)
 				// Save page error
-				c.storage.SavePageError(item.ID, "processing_error", err.Error())
+				if saveErr := c.storage.SavePageError(item.ID, "processing_error", err.Error()); saveErr != nil {
+					log.Printf("Worker %d: failed to save processing error: %v", id, saveErr)
+				}
 				c.incrementErrorCount()
 				time.Sleep(c.config.RequestDelay)
 				continue
