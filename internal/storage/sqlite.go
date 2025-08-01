@@ -41,7 +41,7 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	return storage, nil
 }
 
-// InitSchema creates the database schema and handles migrations
+// InitSchema creates the database schema
 func (s *SQLiteStorage) InitSchema() error {
 	// Enable foreign keys and WAL mode for better performance
 	pragmas := []string{
@@ -58,146 +58,14 @@ func (s *SQLiteStorage) InitSchema() error {
 		}
 	}
 
-	// Check if database exists and needs migration
-	needsMigration, err := s.needsHTTPHeaderMigration()
-	if err != nil {
-		return fmt.Errorf("failed to check migration status: %w", err)
-	}
-
 	// Create schema
 	if _, err := s.db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// Perform migration if needed
-	if needsMigration {
-		if err := s.migrateToJSONHeaders(); err != nil {
-			return fmt.Errorf("failed to migrate to JSON headers: %w", err)
-		}
-	}
-
 	return nil
 }
 
-// needsHTTPHeaderMigration checks if the database needs migration to JSON headers
-func (s *SQLiteStorage) needsHTTPHeaderMigration() (bool, error) {
-	// Check if response_http_headers column exists
-	query := `
-		SELECT COUNT(*) 
-		FROM pragma_table_info('pages') 
-		WHERE name = 'response_http_headers'
-	`
-	
-	var count int
-	err := s.db.QueryRow(query).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	
-	// If column doesn't exist, we need migration
-	return count == 0, nil
-}
-
-// migrateToJSONHeaders migrates existing data to the new JSON headers format
-func (s *SQLiteStorage) migrateToJSONHeaders() error {
-	// Start transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin migration transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Get all completed pages with individual header fields
-	query := `
-		SELECT id, content_type, content_length, last_modified, server, content_encoding
-		FROM pages 
-		WHERE status = 'completed' 
-		AND (content_type IS NOT NULL OR content_length IS NOT NULL 
-			OR last_modified IS NOT NULL OR server IS NOT NULL 
-			OR content_encoding IS NOT NULL)
-	`
-	
-	rows, err := tx.Query(query)
-	if err != nil {
-		return fmt.Errorf("failed to query existing data: %w", err)
-	}
-	defer rows.Close()
-
-	// Prepare update statement
-	updateStmt, err := tx.Prepare(`
-		UPDATE pages 
-		SET response_http_headers = ?
-		WHERE id = ?
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare update statement: %w", err)
-	}
-	defer updateStmt.Close()
-
-	migratedCount := 0
-	for rows.Next() {
-		var id int
-		var contentType, server, contentEncoding sql.NullString
-		var contentLength sql.NullInt64
-		var lastModified sql.NullTime
-
-		if err := rows.Scan(&id, &contentType, &contentLength, &lastModified, &server, &contentEncoding); err != nil {
-			return fmt.Errorf("failed to scan row: %w", err)
-		}
-
-		// Build headers map
-		headers := make(map[string]string)
-		
-		if contentType.Valid && contentType.String != "" {
-			headers["content-type"] = contentType.String
-		}
-		if contentLength.Valid {
-			headers["content-length"] = fmt.Sprintf("%d", contentLength.Int64)
-		}
-		if lastModified.Valid && !lastModified.Time.IsZero() {
-			headers["last-modified"] = lastModified.Time.Format(time.RFC1123)
-		}
-		if server.Valid && server.String != "" {
-			headers["server"] = server.String
-		}
-		if contentEncoding.Valid && contentEncoding.String != "" {
-			headers["content-encoding"] = contentEncoding.String
-		}
-
-		// Skip if no headers to migrate
-		if len(headers) == 0 {
-			continue
-		}
-
-		// Serialize to JSON
-		headersJSON, err := json.Marshal(headers)
-		if err != nil {
-			return fmt.Errorf("failed to marshal headers for id %d: %w", id, err)
-		}
-
-		// Update row
-		if _, err := updateStmt.Exec(string(headersJSON), id); err != nil {
-			return fmt.Errorf("failed to update headers for id %d: %w", id, err)
-		}
-
-		migratedCount++
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("error during row iteration: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit migration: %w", err)
-	}
-
-	if migratedCount > 0 {
-		fmt.Printf("Successfully migrated %d pages to JSON headers format\n", migratedCount)
-	}
-
-	return nil
-}
 
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {

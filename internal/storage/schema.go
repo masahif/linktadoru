@@ -68,7 +68,7 @@ CREATE VIEW IF NOT EXISTS completed_pages AS
 SELECT 
     id, url, status_code, title, meta_description, meta_robots,
     canonical_url, content_hash, ttfb_ms, download_time_ms,
-    response_size_bytes, content_type, content_length,
+    response_size_bytes, response_http_headers, content_type, content_length,
     last_modified, server, content_encoding, crawled_at
 FROM pages
 WHERE status = 'completed';
