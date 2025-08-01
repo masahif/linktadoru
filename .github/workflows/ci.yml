@@ -8,14 +8,11 @@ on:
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
-  push:
-    branches: [ develop ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
   GO_VERSION: '1.23'
