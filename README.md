@@ -12,6 +12,7 @@ A high-performance web crawler and link analysis tool built in Go.
 
 - **Fast Concurrent Crawling**: Configurable worker pool for parallel processing
 - **Link Analysis**: Maps internal and external link relationships
+- **Basic Authentication**: Support for HTTP Basic Auth protected sites
 - **Robots.txt Compliance**: Respects robots.txt rules and crawl delays
 - **SQLite Storage**: All data stored in a queryable SQLite database
 - **Resumable**: Persistent queue for interrupted sessions
@@ -70,6 +71,44 @@ export LT_CONCURRENCY=5
 export LT_REQUEST_DELAY=2s
 ./linktadoru https://httpbin.org
 ```
+
+## Authentication
+
+LinkTadoru supports HTTP Basic Authentication for crawling protected sites.
+
+### CLI Flags
+
+```bash
+# Using CLI flags (not recommended for production)
+./linktadoru --auth-username myuser --auth-password mypass https://protected.httpbin.org
+
+# Using custom environment variables
+./linktadoru --auth-username-env MY_USER --auth-password-env MY_PASS https://protected.httpbin.org
+```
+
+### Environment Variables (Recommended)
+
+```bash
+# Default environment variables
+export LT_AUTH_USERNAME=myuser
+export LT_AUTH_PASSWORD=mypass
+./linktadoru https://protected.httpbin.org
+
+# Custom environment variables
+export MY_USER=myuser
+export MY_PASS=mypass
+./linktadoru --auth-username-env MY_USER --auth-password-env MY_PASS https://protected.httpbin.org
+```
+
+### Configuration File
+
+```yaml
+# config.yaml (not recommended - use environment variables instead)
+auth_username: myuser
+auth_password: mypass
+```
+
+**Security Note**: For security reasons, it's recommended to use environment variables rather than storing credentials in configuration files.
 
 ## Contributing
 

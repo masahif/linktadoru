@@ -13,18 +13,22 @@ LinkTadoru can be configured through multiple methods with the following priorit
 ./linktadoru --help
 
 Flags:
-  -c, --concurrency int       Number of concurrent workers (default 10)
-      --config string         Config file path (default "./config.yaml")
-  -d, --database string       SQLite database path (default "./crawl.db")
-  -r, --delay duration        Delay between requests (default 1s)
+      --auth-password string       Basic auth password
+      --auth-password-env string   Environment variable for password (default "LT_AUTH_PASSWORD")
+      --auth-username string       Basic auth username
+      --auth-username-env string   Environment variable for username (default "LT_AUTH_USERNAME")
+  -c, --concurrency int           Number of concurrent workers (default 10)
+      --config string             Config file path (default "./config.yaml")
+  -d, --database string           SQLite database path (default "./crawl.db")
+  -r, --delay duration            Delay between requests (default 1s)
       --exclude-patterns strings  Regex patterns for URLs to exclude
-  -h, --help                  help for linktadoru
-      --ignore-robots         Ignore robots.txt rules
+  -h, --help                      help for linktadoru
+      --ignore-robots             Ignore robots.txt rules
       --include-patterns strings  Regex patterns for URLs to include
-  -l, --limit int            Stop after N pages (0=unlimited)
-  -t, --timeout duration     HTTP request timeout (default 30s)
-  -u, --user-agent string    HTTP User-Agent (default "LinkTadoru/1.0")
-  -v, --version              version for linktadoru
+  -l, --limit int                Stop after N pages (0=unlimited)
+  -t, --timeout duration         HTTP request timeout (default 30s)
+  -u, --user-agent string        HTTP User-Agent (default "LinkTadoru/1.0")
+  -v, --version                  version for linktadoru
 ```
 
 ## Configuration File
@@ -39,6 +43,10 @@ request_timeout: 30s
 user_agent: "LinkTadoru/1.0"
 respect_robots: true
 limit: 0
+
+# Authentication (NOT RECOMMENDED - use environment variables instead)
+# auth_username: "myuser"
+# auth_password: "mypass"
 
 # URL filtering
 include_patterns:
@@ -67,6 +75,10 @@ export LT_RESPECT_ROBOTS=true
 export LT_DATABASE_PATH="./mysite.db"
 export LT_LIMIT=1000
 
+# Authentication (recommended method)
+export LT_AUTH_USERNAME="myuser"
+export LT_AUTH_PASSWORD="mypass"
+
 ./linktadoru https://httpbin.org
 ```
 
@@ -74,6 +86,10 @@ export LT_LIMIT=1000
 
 | Option | CLI Flag | Environment Variable | Default | Description |
 |--------|----------|---------------------|---------|-------------|
+| auth_username | `--auth-username` | `LT_AUTH_USERNAME` | "" | HTTP Basic Auth username |
+| auth_password | `--auth-password` | `LT_AUTH_PASSWORD` | "" | HTTP Basic Auth password |
+| auth_username_env | `--auth-username-env` | - | LT_AUTH_USERNAME | Environment variable for username |
+| auth_password_env | `--auth-password-env` | - | LT_AUTH_PASSWORD | Environment variable for password |
 | concurrency | `-c, --concurrency` | `LT_CONCURRENCY` | 10 | Number of concurrent workers |
 | request_delay | `-r, --delay` | `LT_REQUEST_DELAY` | 1s | Delay between requests per domain |
 | request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout |
@@ -83,6 +99,40 @@ export LT_LIMIT=1000
 | database_path | `-d, --database` | `LT_DATABASE_PATH` | ./crawl.db | SQLite database file path |
 | include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
 | exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |
+
+## Authentication
+
+LinkTadoru supports HTTP Basic Authentication for accessing password-protected websites.
+
+### Using Environment Variables (Recommended)
+
+```bash
+# Set credentials using default environment variables
+export LT_AUTH_USERNAME="myuser"
+export LT_AUTH_PASSWORD="mypass"
+./linktadoru https://protected.httpbin.org
+
+# Using custom environment variables
+export MY_USER="myuser"
+export MY_PASS="mypass"
+./linktadoru --auth-username-env MY_USER --auth-password-env MY_PASS https://protected.httpbin.org
+```
+
+### Using CLI Flags (Not Recommended for Production)
+
+```bash
+./linktadoru --auth-username myuser --auth-password mypass https://protected.httpbin.org
+```
+
+### Using Configuration File (Not Recommended)
+
+```yaml
+# config.yaml - NOT recommended for security reasons
+auth_username: "myuser"
+auth_password: "mypass"
+```
+
+**Security Best Practice**: Always use environment variables for authentication credentials rather than CLI flags or configuration files. Environment variables are not logged in shell history or visible in process lists.
 
 ## Pattern Matching
 
