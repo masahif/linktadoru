@@ -26,3 +26,8 @@ exclude_patterns:       # Regular expression patterns for URLs to exclude
 
 # Database configuration
 database_path: "./crawl.db"    # Path to SQLite database file
+
+# Authentication configuration (NOT RECOMMENDED - use environment variables instead)
+# For security reasons, use LT_AUTH_USERNAME and LT_AUTH_PASSWORD environment variables
+# auth_username: "myuser"     # HTTP Basic Auth username
+# auth_password: "mypass"     # HTTP Basic Auth password
