@@ -10,11 +10,13 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // DefaultCrawler implements the Crawler interface
 type DefaultCrawler struct {
-	config       *CrawlConfig
+	config       *config.CrawlConfig
 	storage      Storage
 	httpClient   *HTTPClient
 	processor    PageProcessor
@@ -35,10 +37,15 @@ type DefaultCrawler struct {
 // It initializes all necessary components including HTTP client, page processor,
 // rate limiter, and robots.txt parser. The crawler is ready to start crawling
 // after creation.
-func NewCrawler(config *CrawlConfig, storage Storage) (*DefaultCrawler, error) {
+func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, error) {
 
 	// Initialize HTTP client
 	httpClient := NewHTTPClient(config.UserAgent, config.RequestTimeout)
+
+	// Configure basic authentication if provided
+	if username, password := config.GetBasicAuthCredentials(); username != "" && password != "" {
+		httpClient.SetBasicAuth(username, password)
+	}
 
 	// Initialize components
 	processor := NewPageProcessor(httpClient)

@@ -3,8 +3,22 @@
 package config
 
 import (
+	"os"
 	"time"
 )
+
+// BasicAuth contains HTTP Basic Authentication credentials
+type BasicAuth struct {
+	Username    string `mapstructure:"username" yaml:"username"`         // Username for basic auth
+	Password    string `mapstructure:"password" yaml:"password"`         // Password for basic auth
+	UsernameEnv string `mapstructure:"username_env" yaml:"username_env"` // Environment variable for username
+	PasswordEnv string `mapstructure:"password_env" yaml:"password_env"` // Environment variable for password
+}
+
+// Auth contains authentication configuration
+type Auth struct {
+	Basic *BasicAuth `mapstructure:"basic" yaml:"basic"` // Basic authentication settings
+}
 
 // CrawlConfig holds crawler configuration
 type CrawlConfig struct {
@@ -16,6 +30,9 @@ type CrawlConfig struct {
 	UserAgent      string        `mapstructure:"user_agent" yaml:"user_agent"`           // HTTP User-Agent header
 	RespectRobots  bool          `mapstructure:"respect_robots" yaml:"respect_robots"`   // Whether to respect robots.txt
 	Limit          int           `mapstructure:"limit" yaml:"limit"`                     // Stop after N pages
+
+	// Authentication
+	Auth *Auth `mapstructure:"auth" yaml:"auth"` // Authentication configuration
 
 	// URL filtering
 	IncludePatterns []string `mapstructure:"include_patterns" yaml:"include_patterns"` // Regex patterns for URLs to include
@@ -61,4 +78,30 @@ func (c *CrawlConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// GetBasicAuthCredentials returns the basic auth username and password,
+// resolving environment variables if specified
+func (c *CrawlConfig) GetBasicAuthCredentials() (username, password string) {
+	if c.Auth == nil || c.Auth.Basic == nil {
+		return "", ""
+	}
+
+	basic := c.Auth.Basic
+
+	// Get username
+	if basic.UsernameEnv != "" {
+		username = os.Getenv(basic.UsernameEnv)
+	} else {
+		username = basic.Username
+	}
+
+	// Get password
+	if basic.PasswordEnv != "" {
+		password = os.Getenv(basic.PasswordEnv)
+	} else {
+		password = basic.Password
+	}
+
+	return username, password
 }

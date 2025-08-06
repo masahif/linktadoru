@@ -2,8 +2,10 @@ package crawler
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -189,5 +191,97 @@ func TestHTTPClientHeaders(t *testing.T) {
 	expectedBody := `{"message": "success"}`
 	if len(resp.Body) != len(expectedBody) {
 		t.Errorf("Expected body length %d, got %d", len(expectedBody), len(resp.Body))
+	}
+}
+
+func TestHTTPClientBasicAuth(t *testing.T) {
+	// Create test server that requires basic auth
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
+			return
+		}
+
+		// Verify basic auth format
+		if !strings.HasPrefix(auth, "Basic ") {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Invalid auth format"))
+			return
+		}
+
+		// Decode and verify credentials
+		encoded := strings.TrimPrefix(auth, "Basic ")
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Invalid base64"))
+			return
+		}
+
+		credentials := string(decoded)
+		if credentials != "testuser:testpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Invalid credentials"))
+			return
+		}
+
+		// Success
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Authenticated!"))
+	}))
+	defer server.Close()
+
+	// Test without auth - should get 401
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	ctx := context.Background()
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL: %v", err)
+	}
+
+	if resp.StatusCode != 401 {
+		t.Errorf("Expected status code 401 without auth, got %d", resp.StatusCode)
+	}
+
+	// Test with auth - should get 200
+	client.SetBasicAuth("testuser", "testpass")
+	resp, err = client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL with auth: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200 with auth, got %d", resp.StatusCode)
+	}
+
+	if string(resp.Body) != "Authenticated!" {
+		t.Errorf("Expected body 'Authenticated!', got '%s'", string(resp.Body))
+	}
+}
+
+func TestHTTPClientSetBasicAuth(t *testing.T) {
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	// Initially no auth
+	if client.username != "" || client.password != "" {
+		t.Errorf("Expected empty credentials initially, got username='%s', password='%s'", client.username, client.password)
+	}
+
+	// Set auth
+	client.SetBasicAuth("user123", "pass456")
+	if client.username != "user123" || client.password != "pass456" {
+		t.Errorf("Expected user123/pass456, got username='%s', password='%s'", client.username, client.password)
+	}
+
+	// Clear auth by setting empty strings
+	client.SetBasicAuth("", "")
+	if client.username != "" || client.password != "" {
+		t.Errorf("Expected empty credentials after clearing, got username='%s', password='%s'", client.username, client.password)
 	}
 }

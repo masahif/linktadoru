@@ -49,16 +49,3 @@ type CrawlState struct {
 	UpdatedAt    time.Time // Last update timestamp (UTC)
 }
 
-// CrawlConfig holds crawler configuration
-type CrawlConfig struct {
-	SeedURLs        []string      // Starting URLs for crawling
-	Concurrency     int           // Number of concurrent workers
-	RequestDelay    time.Duration // Delay between requests
-	RequestTimeout  time.Duration // HTTP request timeout
-	UserAgent       string        // HTTP User-Agent header
-	RespectRobots   bool          // Whether to respect robots.txt (false=ignore robots.txt)
-	IncludePatterns []string      // Regex patterns for URLs to include
-	ExcludePatterns []string      // Regex patterns for URLs to exclude
-	DatabasePath    string        // Path to SQLite database file
-	Limit           int           // Stop after N pages (0=unlimited)
-}
