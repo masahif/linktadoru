@@ -101,3 +101,53 @@ func TestConfigValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestGetBasicAuthCredentials(t *testing.T) {
+	// Test case 1: No auth configuration
+	cfg := DefaultConfig()
+	username, password := cfg.GetBasicAuthCredentials()
+	if username != "" || password != "" {
+		t.Errorf("Expected empty credentials, got username='%s', password='%s'", username, password)
+	}
+
+	// Test case 2: Direct username/password
+	cfg.Auth = &Auth{
+		Basic: &BasicAuth{
+			Username: "testuser",
+			Password: "testpass",
+		},
+	}
+	username, password = cfg.GetBasicAuthCredentials()
+	if username != "testuser" || password != "testpass" {
+		t.Errorf("Expected testuser/testpass, got username='%s', password='%s'", username, password)
+	}
+
+	// Test case 3: Environment variables (mock by setting values)
+	t.Setenv("TEST_USERNAME", "envuser")
+	t.Setenv("TEST_PASSWORD", "envpass")
+
+	cfg.Auth = &Auth{
+		Basic: &BasicAuth{
+			UsernameEnv: "TEST_USERNAME",
+			PasswordEnv: "TEST_PASSWORD",
+		},
+	}
+	username, password = cfg.GetBasicAuthCredentials()
+	if username != "envuser" || password != "envpass" {
+		t.Errorf("Expected envuser/envpass, got username='%s', password='%s'", username, password)
+	}
+
+	// Test case 4: Environment variables take precedence
+	cfg.Auth = &Auth{
+		Basic: &BasicAuth{
+			Username:    "directuser",
+			Password:    "directpass",
+			UsernameEnv: "TEST_USERNAME",
+			PasswordEnv: "TEST_PASSWORD",
+		},
+	}
+	username, password = cfg.GetBasicAuthCredentials()
+	if username != "envuser" || password != "envpass" {
+		t.Errorf("Expected env vars to take precedence, got username='%s', password='%s'", username, password)
+	}
+}

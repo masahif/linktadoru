@@ -3,6 +3,8 @@ package crawler
 import (
 	"testing"
 	"time"
+
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // MockStorage implements Storage interface for testing
@@ -70,7 +72,7 @@ func (m *MockStorage) GetURLStatus(url string) (status string, exists bool) {
 
 func TestLimit(t *testing.T) {
 	// Test that limit configuration is properly set
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          5,
 		Concurrency:    1,
@@ -129,7 +131,7 @@ func TestLimitLogic(t *testing.T) {
 
 func TestGetStats(t *testing.T) {
 	// Test the GetStats method
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          0,
 		Concurrency:    1,
@@ -182,7 +184,7 @@ func TestGetStats(t *testing.T) {
 
 func TestIncrementCounters(t *testing.T) {
 	// Test individual counter increment functions
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          0,
 		Concurrency:    1,

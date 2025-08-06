@@ -14,6 +14,8 @@ import (
 type HTTPClient struct {
 	client    *http.Client
 	userAgent string
+	username  string // Basic auth username
+	password  string // Basic auth password
 }
 
 // HTTPMetrics contains performance metrics for an HTTP request
@@ -65,6 +67,12 @@ func NewHTTPClient(userAgent string, timeout time.Duration) *HTTPClient {
 	}
 }
 
+// SetBasicAuth configures basic authentication for HTTP requests
+func (h *HTTPClient) SetBasicAuth(username, password string) {
+	h.username = username
+	h.password = password
+}
+
 // Get performs an HTTP GET request with comprehensive performance tracking.
 // It measures DNS lookup time, TCP connection time, TLS handshake time,
 // time to first byte (TTFB), and total download time. The response includes
@@ -80,6 +88,11 @@ func (h *HTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	// Don't set Accept-Encoding manually - let Go handle compression automatically
+
+	// Set basic authentication if configured
+	if h.username != "" && h.password != "" {
+		req.SetBasicAuth(h.username, h.password)
+	}
 
 	// Setup performance tracking
 	var metrics HTTPMetrics

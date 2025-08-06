@@ -62,6 +62,12 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots", false, "Ignore robots.txt rules")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
 
+	// Authentication flags
+	rootCmd.Flags().String("auth-username", "", "Basic auth username")
+	rootCmd.Flags().String("auth-password", "", "Basic auth password")
+	rootCmd.Flags().String("auth-username-env", "LT_AUTH_USERNAME", "Environment variable for username")
+	rootCmd.Flags().String("auth-password-env", "LT_AUTH_PASSWORD", "Environment variable for password")
+
 	// URL filtering flags
 	rootCmd.Flags().StringSlice("include-patterns", []string{}, "Regex patterns for URLs to include")
 	rootCmd.Flags().StringSlice("exclude-patterns", []string{}, "Regex patterns for URLs to exclude")
@@ -79,6 +85,12 @@ func init() {
 	_ = viper.BindPFlag("include_patterns", rootCmd.Flags().Lookup("include-patterns"))
 	_ = viper.BindPFlag("exclude_patterns", rootCmd.Flags().Lookup("exclude-patterns"))
 	_ = viper.BindPFlag("database_path", rootCmd.Flags().Lookup("database"))
+
+	// Bind auth flags to viper
+	_ = viper.BindPFlag("auth.basic.username", rootCmd.Flags().Lookup("auth-username"))
+	_ = viper.BindPFlag("auth.basic.password", rootCmd.Flags().Lookup("auth-password"))
+	_ = viper.BindPFlag("auth.basic.username_env", rootCmd.Flags().Lookup("auth-username-env"))
+	_ = viper.BindPFlag("auth.basic.password_env", rootCmd.Flags().Lookup("auth-password-env"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -144,6 +156,13 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)
 	fmt.Printf("  Respect Robots: %t\n", cfg.RespectRobots)
 
+	// Display auth status without exposing credentials
+	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
+		fmt.Printf("  Authentication: Basic (username: %s)\n", username)
+	} else {
+		fmt.Printf("  Authentication: None\n")
+	}
+
 	// Initialize and start the crawler
 	crawler, err := initializeCrawler(cfg)
 	if err != nil {
@@ -164,7 +183,7 @@ func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, error) {
 	}
 
 	// Convert config to crawler config
-	crawlConfig := &crawler.CrawlConfig{
+	crawlConfig := &config.CrawlConfig{
 		SeedURLs:        cfg.SeedURLs,
 		Concurrency:     cfg.Concurrency,
 		RequestDelay:    cfg.RequestDelay,

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // TestStartStop tests the Start and Stop methods
@@ -19,7 +21,7 @@ func TestStartStop(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{server.URL},
 		Limit:          1,
 		Concurrency:    1,
@@ -71,7 +73,7 @@ func TestStartWithRealStorage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{server.URL},
 		Limit:          1,
 		Concurrency:    1,
@@ -168,7 +170,7 @@ func TestWorkerErrorHandling(t *testing.T) {
 	// Create a mock storage that simulates a processing error
 	store := &ErrorMockStorage{}
 
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          1,
 		Concurrency:    1,
@@ -210,7 +212,7 @@ func (e *ErrorMockStorage) GetNextFromQueue() (*URLItem, error) {
 
 // TestStatsReporter tests the stats reporting functionality
 func TestStatsReporter(t *testing.T) {
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.test"},
 		Limit:          5,
 		Concurrency:    1,
@@ -258,7 +260,7 @@ func TestMultipleWorkers(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{server.URL, server.URL + "/page2"},
 		Limit:          2,
 		Concurrency:    2, // Multiple workers
@@ -290,7 +292,7 @@ func TestMultipleWorkers(t *testing.T) {
 
 // TestLimitReached tests that crawling stops when limit is reached
 func TestLimitReached(t *testing.T) {
-	config := &CrawlConfig{
+	config := &config.CrawlConfig{
 		SeedURLs:       []string{"http://example.test"},
 		Limit:          2, // Small limit
 		Concurrency:    1,

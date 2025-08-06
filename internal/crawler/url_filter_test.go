@@ -2,6 +2,8 @@ package crawler
 
 import (
 	"testing"
+
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 func TestShouldCrawlURL(t *testing.T) {
@@ -122,7 +124,7 @@ func TestShouldCrawlURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			crawler := &DefaultCrawler{
-				config: &CrawlConfig{
+				config: &config.CrawlConfig{
 					IncludePatterns: tt.includePatterns,
 					ExcludePatterns: tt.excludePatterns,
 				},
