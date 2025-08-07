@@ -66,7 +66,7 @@ GOOS=windows GOARCH=amd64 go build -o linktadoru.exe ./cmd/crawler
 # All tests
 make test
 
-# With coverage
+# Generate coverage report  
 make test-coverage
 
 # Specific package
@@ -74,15 +74,8 @@ go test -v ./internal/crawler
 
 # With race detection
 go test -race ./...
-```
 
-### Test Coverage
-
-```bash
-# Generate coverage report
-make test-coverage
-
-# View HTML report
+# View HTML coverage report
 go tool cover -html=coverage.out
 ```
 
@@ -126,7 +119,18 @@ Follow the coding standards:
 
 ### 3. Run Checks
 
-#### Local Testing (Recommended)
+#### Traditional Testing
+```bash
+# Run all checks
+make check
+
+# Individual checks
+make fmt
+make lint
+make test
+```
+
+#### Local CI Testing (Advanced)
 ```bash
 # Install act (if not already installed)
 brew install act  # macOS
@@ -137,17 +141,6 @@ act -W .github/workflows/ci.yml
 
 # Test specific job
 act -W .github/workflows/ci.yml -j test
-```
-
-#### Traditional Testing
-```bash
-# Run all checks
-make check
-
-# Individual checks
-make fmt
-make lint
-make test
 ```
 
 ### 4. Commit Changes
@@ -176,35 +169,13 @@ gh pr create --title "feat: your feature" --body "Description of changes"
 ```
 
 **CI Strategy**: 
-- ✅ **PR → main**: 自動でCI実行
-- ❌ **push → main**: CI実行されません  
-- 🔧 **手動実行**: `gh workflow run CI --ref main`
+- ✅ **PR → main**: CI runs automatically
+- ❌ **push → main**: CI does not run automatically  
+- 🔧 **Manual trigger**: `gh workflow run CI --ref main`
 
-詳細は [github-actions-local-testing.md](github-actions-local-testing.md) を参照。
+See [github-actions-local-testing.md](github-actions-local-testing.md) for details.
 
 Create a pull request on GitHub. CI will run automatically.
-
-## Local GitHub Actions Testing
-
-Use [act](https://github.com/nektos/act) to test workflows locally:
-
-```bash
-# Install act
-brew install act  # macOS
-# or see https://github.com/nektos/act#installation
-
-# Test push event
-act push
-
-# Test pull request
-act pull_request
-
-# Test specific job
-act -j test
-```
-
-**Note**: You must be in a git repository for act to work.
-
 
 ## Database Management
 
@@ -232,33 +203,17 @@ SELECT status, COUNT(*) FROM pages GROUP BY status;
 
 ## Performance Profiling
 
-### CPU Profiling
-
-```go
-import _ "net/http/pprof"
-
-// In main()
-go func() {
-    log.Println(http.ListenAndServe("localhost:6060", nil))
-}()
-```
+Enable pprof by importing `_ "net/http/pprof"` and starting HTTP server in main().
 
 ```bash
-# Generate profile
+# CPU profile
 go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
 
-# Analyze
-go tool pprof -http=:8080 profile.out
-```
-
-### Memory Profiling
-
-```bash
-# Heap profile
+# Memory profile  
 go tool pprof http://localhost:6060/debug/pprof/heap
 
-# Goroutine profile
-go tool pprof http://localhost:6060/debug/pprof/goroutine
+# View in browser
+go tool pprof -http=:8080 profile.out
 ```
 
 ## Release Process

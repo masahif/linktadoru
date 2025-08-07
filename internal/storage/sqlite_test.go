@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/masahif/linktadoru/internal/crawler"
+	"linktadoru/internal/crawler"
 )
 
 func TestSQLiteStorage(t *testing.T) {
@@ -18,7 +18,11 @@ func TestSQLiteStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer storage.Close()
+	defer func() {
+		if err := storage.Close(); err != nil {
+			t.Logf("Warning: failed to close storage: %v", err)
+		}
+	}()
 
 	t.Run("SaveAndRetrievePage", func(t *testing.T) {
 		page := &crawler.PageData{
@@ -292,7 +296,11 @@ func TestSQLiteStorage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create status storage: %v", err)
 		}
-		defer statusStorage.Close()
+		defer func() {
+			if err := statusStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close statusStorage: %v", err)
+			}
+		}()
 
 		// Test queue status monitoring
 		urls := []string{
@@ -386,7 +394,11 @@ func TestSQLiteStorage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create error storage: %v", err)
 		}
-		defer errorStorage.Close()
+		defer func() {
+			if err := errorStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close errorStorage: %v", err)
+			}
+		}()
 
 		// Add URL to queue first
 		urls := []string{"https://error.test/page"}
@@ -427,7 +439,11 @@ func TestSQLiteStorage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create link storage: %v", err)
 		}
-		defer linkStorage.Close()
+		defer func() {
+			if err := linkStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close linkStorage: %v", err)
+			}
+		}()
 
 		// Create test links
 		links := []*crawler.LinkData{
@@ -458,7 +474,11 @@ func TestSQLiteStorage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create status storage: %v", err)
 		}
-		defer statusStorage.Close()
+		defer func() {
+			if err := statusStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close statusStorage: %v", err)
+			}
+		}()
 
 		testURL := "https://status.test/page"
 

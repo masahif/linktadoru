@@ -103,16 +103,17 @@ func (r *RobotsParser) getRules(ctx context.Context, domain, scheme string) (*Ro
 		return nil, err
 	}
 
-	if resp.StatusCode == 404 {
+	switch resp.StatusCode {
+	case 404:
 		// No robots.txt means everything is allowed
 		rules = &RobotRules{
 			Disallowed: []string{},
 			Allowed:    []string{},
 			CrawlDelay: 0,
 		}
-	} else if resp.StatusCode == 200 {
+	case 200:
 		rules = r.parseRobotsTxt(string(resp.Body))
-	} else {
+	default:
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 

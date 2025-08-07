@@ -27,33 +27,15 @@ jobs:
         go-version: ${{ env.GO_VERSION }}
         cache: true
 
-    - name: Download dependencies
+    - name: Download dependencies and run tests
       run: |
-        go mod download
-        go mod tidy
-
-    - name: Run tests
-      run: go test -v -race -timeout 10m ./...
+        make deps
+        make test-ci
 
   build:
     name: Build Release Binaries
     needs: test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            suffix: ""
-            name: "Linux x86_64"
-          - goos: darwin
-            goarch: arm64
-            suffix: ""
-            name: "macOS ARM64"
-          - goos: windows
-            goarch: amd64
-            suffix: ".exe"
-            name: "Windows x86_64"
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -66,39 +48,14 @@ jobs:
         go-version: ${{ env.GO_VERSION }}
         cache: true
 
-    - name: Get version from tag
-      id: version
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        
-        # Check if this is a pre-release
-        if [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"rc"* ]]; then
-          echo "prerelease=true" >> $GITHUB_OUTPUT
-        else
-          echo "prerelease=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Build binary
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-        CGO_ENABLED: 0
-      run: |
-        BINARY_NAME="linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
-        
-        go build \
-          -trimpath \
-          -ldflags "-X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -s -w" \
-          -o "$BINARY_NAME" \
-          ./cmd/crawler
+    - name: Build all platforms
+      run: make release
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: linktadoru-${{ steps.version.outputs.tag }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
+        name: release-binaries
+        path: dist/
         retention-days: 5
 
   release:
@@ -130,15 +87,11 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        path: artifacts
+        name: release-binaries
+        path: release
 
-    - name: Prepare release files
-      run: |
-        mkdir -p release
-        find artifacts -name "linktadoru-*" -type f | while read file; do
-          cp "$file" release/
-        done
-        ls -la release/
+    - name: List release files
+      run: ls -la release/
 
     - name: Generate release notes
       id: release_notes
@@ -160,23 +113,24 @@ jobs:
         
         Choose the appropriate binary for your platform:
         
-        - **Linux x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-linux-amd64\`
-        - **macOS ARM64**: \`linktadoru-${{ steps.version.outputs.tag }}-darwin-arm64\`
-        - **Windows x86_64**: \`linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.exe\`
+        - **Linux x86_64**: \`linktadoru-linux-amd64\`
+        - **Linux ARM64**: \`linktadoru-linux-arm64\`
+        - **macOS ARM64**: \`linktadoru-darwin-arm64\`
+        - **Windows x86_64**: \`linktadoru-windows-amd64.exe\`
         
         ## Installation
         
         ### Linux / macOS
         \`\`\`bash
         # Download and make executable
-        chmod +x linktadoru-${{ steps.version.outputs.tag }}-linux-amd64
-        ./linktadoru-${{ steps.version.outputs.tag }}-linux-amd64 --version
+        chmod +x linktadoru-linux-amd64
+        ./linktadoru-linux-amd64 --version
         \`\`\`
         
         ### Windows
         \`\`\`powershell
         # Test the binary
-        .\\linktadoru-${{ steps.version.outputs.tag }}-windows-amd64.exe --version
+        .\\linktadoru-windows-amd64.exe --version
         \`\`\`
         
         ### Using Go

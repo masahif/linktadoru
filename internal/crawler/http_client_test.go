@@ -285,3 +285,194 @@ func TestHTTPClientSetBasicAuth(t *testing.T) {
 		t.Errorf("Expected empty credentials after clearing, got username='%s', password='%s'", client.username, client.password)
 	}
 }
+
+func TestHTTPClientBearerAuth(t *testing.T) {
+	// Create test server that requires bearer auth
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
+			return
+		}
+
+		// Verify bearer auth format
+		if !strings.HasPrefix(auth, "Bearer ") {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Invalid auth format"))
+			return
+		}
+
+		// Verify token
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if token != "test-bearer-token-123" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Invalid token"))
+			return
+		}
+
+		// Success
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Bearer Authenticated!"))
+	}))
+	defer server.Close()
+
+	// Test without auth - should get 401
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	ctx := context.Background()
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL: %v", err)
+	}
+
+	if resp.StatusCode != 401 {
+		t.Errorf("Expected status code 401 without auth, got %d", resp.StatusCode)
+	}
+
+	// Test with bearer auth - should get 200
+	client.SetBearerAuth("test-bearer-token-123")
+	resp, err = client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL with bearer auth: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200 with bearer auth, got %d", resp.StatusCode)
+	}
+
+	if string(resp.Body) != "Bearer Authenticated!" {
+		t.Errorf("Expected body 'Bearer Authenticated!', got '%s'", string(resp.Body))
+	}
+}
+
+func TestHTTPClientAPIKeyAuth(t *testing.T) {
+	// Create test server that requires API key auth
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("API key required"))
+			return
+		}
+
+		// Verify API key
+		if apiKey != "test-api-key-456" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Invalid API key"))
+			return
+		}
+
+		// Success
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("API Key Authenticated!"))
+	}))
+	defer server.Close()
+
+	// Test without auth - should get 401
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	ctx := context.Background()
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL: %v", err)
+	}
+
+	if resp.StatusCode != 401 {
+		t.Errorf("Expected status code 401 without auth, got %d", resp.StatusCode)
+	}
+
+	// Test with API key auth - should get 200
+	client.SetAPIKeyAuth("X-API-Key", "test-api-key-456")
+	resp, err = client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL with API key auth: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200 with API key auth, got %d", resp.StatusCode)
+	}
+
+	if string(resp.Body) != "API Key Authenticated!" {
+		t.Errorf("Expected body 'API Key Authenticated!', got '%s'", string(resp.Body))
+	}
+}
+
+func TestHTTPClientCustomHeaders(t *testing.T) {
+	// Create test server that checks custom headers
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check for custom headers
+		customHeader := r.Header.Get("X-Custom-Header")
+		acceptHeader := r.Header.Get("Accept")
+
+		// Verify headers are present
+		if customHeader != "custom-value" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Missing or invalid X-Custom-Header"))
+			return
+		}
+
+		if acceptHeader != "application/json" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Missing or invalid Accept header"))
+			return
+		}
+
+		// Success
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Headers validated!"))
+	}))
+	defer server.Close()
+
+	// Test with custom headers
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	// Set custom headers
+	client.SetCustomHeaders(map[string]string{
+		"X-Custom-Header": "custom-value",
+		"Accept":          "application/json",
+	})
+
+	ctx := context.Background()
+	resp, err := client.Get(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get URL with custom headers: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200 with custom headers, got %d", resp.StatusCode)
+	}
+
+	if string(resp.Body) != "Headers validated!" {
+		t.Errorf("Expected body 'Headers validated!', got '%s'", string(resp.Body))
+	}
+}
+
+func TestHTTPClientAddCustomHeader(t *testing.T) {
+	client := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
+	defer client.Close()
+
+	// Initially no custom headers
+	if len(client.customHeaders) != 0 {
+		t.Errorf("Expected empty custom headers initially, got %d", len(client.customHeaders))
+	}
+
+	// Add custom headers
+	client.AddCustomHeader("X-Test-Header", "test-value")
+	client.AddCustomHeader("X-Another-Header", "another-value")
+
+	if len(client.customHeaders) != 2 {
+		t.Errorf("Expected 2 custom headers, got %d", len(client.customHeaders))
+	}
+
+	if client.customHeaders["X-Test-Header"] != "test-value" {
+		t.Errorf("Expected 'test-value' for X-Test-Header, got '%s'", client.customHeaders["X-Test-Header"])
+	}
+
+	if client.customHeaders["X-Another-Header"] != "another-value" {
+		t.Errorf("Expected 'another-value' for X-Another-Header, got '%s'", client.customHeaders["X-Another-Header"])
+	}
+}

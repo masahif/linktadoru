@@ -34,12 +34,20 @@ build:
 	go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME} ./${CMD_DIR}
 	@echo "Binary built: ${DIST_DIR}/${BINARY_NAME}"
 
-## test: Run tests with coverage
+## test: Run tests with coverage (CI-compatible)
 .PHONY: test
 test:
 	@echo "Running tests..."
-	go test -v -race -coverprofile=coverage.out ./...
+	go test -v -race -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+## test-coverage: Generate and view test coverage report
+.PHONY: test-coverage
+test-coverage:
+	@echo "Generating test coverage report..."
+	go test -v -race -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
 
 ## test-short: Run short tests
 .PHONY: test-short
@@ -118,12 +126,11 @@ build-linux:
 	GOOS=linux GOARCH=amd64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-amd64 ./${CMD_DIR}
 	GOOS=linux GOARCH=arm64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-arm64 ./${CMD_DIR}
 
-## build-darwin: Build for macOS (Intel and Apple Silicon)
+## build-darwin: Build for macOS (Apple Silicon only)
 .PHONY: build-darwin
 build-darwin:
 	@echo "Building for macOS..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=darwin GOARCH=amd64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-amd64 ./${CMD_DIR}
 	GOOS=darwin GOARCH=arm64 go build ${GOFLAGS} ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-arm64 ./${CMD_DIR}
 
 ## build-windows: Build for Windows (amd64)
@@ -152,22 +159,43 @@ run: build
 	@echo "Running ${BINARY_NAME}..."
 	./${BINARY_NAME} --help
 
-## release: Create release archives
+## release-linux: Build Linux binaries for release
+.PHONY: release-linux
+release-linux: build-linux
+	@echo "Linux release binaries ready in ${DIST_DIR}/"
+	@ls -la ${DIST_DIR}/ | grep linux
+
+## release-darwin: Build macOS binaries for release
+.PHONY: release-darwin
+release-darwin: build-darwin
+	@echo "macOS release binaries ready in ${DIST_DIR}/"
+	@ls -la ${DIST_DIR}/ | grep darwin
+
+## release-windows: Build Windows binaries for release
+.PHONY: release-windows
+release-windows: build-windows
+	@echo "Windows release binaries ready in ${DIST_DIR}/"
+	@ls -la ${DIST_DIR}/ | grep windows
+
+## release: Build binaries for all platforms (no archives)
 .PHONY: release
-release: build-all
-	@echo "Creating release archives..."
-	@mkdir -p ${DIST_DIR}/release
-	@cd ${DIST_DIR} && \
-		tar czf release/${BINARY_NAME}-${VERSION}-linux-amd64.tar.gz ${BINARY_NAME}-linux-amd64 && \
-		tar czf release/${BINARY_NAME}-${VERSION}-linux-arm64.tar.gz ${BINARY_NAME}-linux-arm64 && \
-		tar czf release/${BINARY_NAME}-${VERSION}-darwin-amd64.tar.gz ${BINARY_NAME}-darwin-amd64 && \
-		tar czf release/${BINARY_NAME}-${VERSION}-darwin-arm64.tar.gz ${BINARY_NAME}-darwin-arm64 && \
-		zip release/${BINARY_NAME}-${VERSION}-windows-amd64.zip ${BINARY_NAME}-windows-amd64.exe
-	@echo "Release archives created in ${DIST_DIR}/release/"
+release: release-linux release-darwin release-windows
+	@echo "All release binaries ready in ${DIST_DIR}/"
+	@ls -la ${DIST_DIR}/
 
 ## check: Run all checks (fmt, vet, lint, test)
 .PHONY: check
 check: fmt vet lint test
+
+## ci: Run CI pipeline (deps, check, build)
+.PHONY: ci
+ci: deps check build
+
+## test-ci: Run tests with CI-compatible output (no HTML report)
+.PHONY: test-ci
+test-ci:
+	@echo "Running tests for CI..."
+	go test -v -race -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 
 .PHONY: all
 all: clean deps check build

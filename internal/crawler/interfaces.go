@@ -12,14 +12,6 @@ type Crawler interface {
 	GetStats() CrawlStats
 }
 
-// URLQueue manages the crawl queue (legacy interface, now using SQLite)
-type URLQueue interface {
-	Add(url string) bool
-	Next() (string, bool)
-	Size() int
-	IsEmpty() bool
-}
-
 // PageProcessor handles individual page processing
 type PageProcessor interface {
 	Process(ctx context.Context, url string) (*PageResult, error)

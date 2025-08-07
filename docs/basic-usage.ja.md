@@ -25,12 +25,12 @@
 設定ファイルを作成：
 
 ```yaml
-# mysite-config.yaml
+# mysite-config.yml
 concurrency: 3
 request_delay: 1s
 request_timeout: 15s
 user_agent: "MyBot/1.0"
-respect_robots: true
+ignore_robots: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
@@ -46,7 +46,7 @@ exclude_patterns:
 設定ファイルを使用して実行：
 
 ```bash
-./linktadoru --config mysite-config.yaml https://httpbin.org
+./linktadoru --config mysite-config.yml https://httpbin.org
 ```
 
 ## 高度な使用例
@@ -152,7 +152,7 @@ limit: 0  # 無制限
 concurrency: 2
 request_delay: 5s
 request_timeout: 30s
-respect_robots: true
+ignore_robots: false
 user_agent: "PoliteBot/1.0"
 ```
 

@@ -25,12 +25,12 @@ Crawl up to 10 pages with 2 concurrent workers:
 Create a configuration file:
 
 ```yaml
-# mysite-config.yaml
+# mysite-config.yml
 concurrency: 3
 request_delay: 1s
 request_timeout: 15s
 user_agent: "MyBot/1.0"
-respect_robots: true
+ignore_robots: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
@@ -46,7 +46,7 @@ exclude_patterns:
 Run with configuration:
 
 ```bash
-./linktadoru --config mysite-config.yaml https://httpbin.org
+./linktadoru --config mysite-config.yml https://httpbin.org
 ```
 
 ## Advanced Examples
@@ -152,7 +152,7 @@ limit: 0  # unlimited
 concurrency: 2
 request_delay: 5s
 request_timeout: 30s
-respect_robots: true
+ignore_robots: false
 user_agent: "PoliteBot/1.0"
 ```
 

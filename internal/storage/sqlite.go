@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/masahif/linktadoru/internal/crawler"
+	"linktadoru/internal/crawler"
 	// SQLite database driver (CGO-free)
 	_ "modernc.org/sqlite"
 )
@@ -66,7 +66,6 @@ func (s *SQLiteStorage) InitSchema() error {
 	return nil
 }
 
-
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {
 	return s.db.Close()
@@ -92,7 +91,12 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			// Log error but don't fail the operation
+			_ = err
+		}
+	}()
 
 	now := time.Now()
 	for _, url := range urls {
@@ -254,7 +258,12 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			// Log error but don't fail the operation
+			_ = err
+		}
+	}()
 
 	for _, link := range links {
 		if _, err := stmt.Exec(
@@ -325,7 +334,12 @@ func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query processing items: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			// Log error but don't fail the operation
+			_ = err
+		}
+	}()
 
 	var items []crawler.URLItem
 	for rows.Next() {

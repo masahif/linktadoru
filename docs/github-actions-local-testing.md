@@ -1,8 +1,8 @@
-# GitHub Actions ローカルテストガイド
+# GitHub Actions Local Testing Guide
 
-## 1. actツールのインストール
+## 1. Installing act Tool
 
-`act`はGitHub Actionsをローカルで実行するためのツールです。
+`act` is a tool for running GitHub Actions locally.
 
 ### Linux/macOS (Homebrew)
 ```bash
@@ -24,123 +24,123 @@ sudo mv act_* /usr/local/bin/act
 choco install act-cli
 ```
 
-## 2. ローカルでの実行方法
+## 2. Local Execution
 
-### 注意事項
-⚠️ **Gitリポジトリが必要**: actはGitリポジトリ内で実行する必要があります。プロジェクトをgit initで初期化してください。
+### Prerequisites
+⚠️ **Git repository required**: act must be run within a Git repository. Initialize your project with git init if needed.
 
 ```bash
-# 最初にGitリポジトリを初期化（必要な場合）
+# Initialize Git repository first (if needed)
 git init
 git add .
 git commit -m "Initial commit"
 ```
 
-### プロジェクト設定（.actrc）
+### Project Configuration (.actrc)
 
-プロジェクトルートに`.actrc`ファイルが設定済みです:
+The `.actrc` file is configured in the project root:
 
 ```bash
-# Ubuntu 22.04イメージを使用（互換性向上）
+# Use Ubuntu 22.04 image (better compatibility)
 -P ubuntu-latest=catthehacker/ubuntu:act-22.04
 
-# 環境変数設定
+# Environment variables
 --env GO_VERSION=1.23
 
-# gitignoreを使用しない
+# Don't use gitignore
 --use-gitignore=false
 
-# 詳細出力
+# Verbose output
 --verbose
 ```
 
-### 基本的な使用法
+### Basic Usage
 ```bash
-# ワークフローの一覧表示
+# List workflows
 act --list
 
-# 推奨: CIワークフローの実行（.actrcが自動適用される）
+# Recommended: Run CI workflow (.actrc applied automatically)
 act -W .github/workflows/ci.yml
 
-# 特定のジョブのみ実行
+# Run specific job only
 act -W .github/workflows/ci.yml -j test
 
-# ドライラン（実行せずに確認）
+# Dry run (check without execution)
 act -W .github/workflows/ci.yml --dryrun
 
-# PRイベントをシミュレート
+# Simulate PR event
 act pull_request -W .github/workflows/ci.yml
 ```
 
-### 環境変数の設定
+### Environment Variables
 ```bash
-# .envファイルを作成
+# Create .env file
 echo "GITHUB_TOKEN=your_token" > .env
 
-# .envファイルを使用して実行
+# Run with .env file
 act --env-file .env
 ```
 
-### シークレットの設定
+### Secrets Configuration
 ```bash
-# .secretsファイルを作成
+# Create .secrets file
 echo "GITHUB_TOKEN=your_token" > .secrets
 
-# シークレットファイルを使用
+# Use secrets file
 act --secret-file .secrets
 ```
 
-## 3. 制限事項
+## 3. Limitations
 
-- すべてのGitHub Actionsアクションが完全にサポートされているわけではない
-- Dockerイメージが必要（初回実行時にダウンロード）
-- 一部のGitHub固有の機能は動作しない場合がある
+- Not all GitHub Actions are fully supported
+- Docker images required (downloaded on first run)
+- Some GitHub-specific features may not work
 
-## 4. 手動CI実行（workflow_dispatch）
+## 4. Manual CI Execution (workflow_dispatch)
 
-CI戦略が変更され、mainブランチへの直接pushではCIが実行されなくなりました。必要に応じて手動でCIを実行できます。
+CI strategy has changed - CI no longer runs on direct pushes to main branch. Manual execution is available when needed.
 
-### GitHub CLI使用
+### Using GitHub CLI
 ```bash
-# mainブランチでCIを手動実行
+# Manually run CI on main branch
 gh workflow run CI --ref main
 
-# 特定のブランチでCIを実行
+# Run CI on specific branch
 gh workflow run CI --ref feature-branch
 
-# 実行状況確認
+# Check run status
 gh run list --workflow=CI --limit 5
 ```
 
-### GitHub Web UI使用
-1. GitHubリポジトリページ → **Actions**タブ
-2. 左サイドバーの**CI**をクリック
-3. 右上の**Run workflow**ボタンをクリック
-4. ブランチを選択して**Run workflow**
+### Using GitHub Web UI
+1. Go to GitHub repository page → **Actions** tab
+2. Click **CI** in left sidebar
+3. Click **Run workflow** button (top right)
+4. Select branch and click **Run workflow**
 
-## 5. 推奨ワークフロー
+## 5. Recommended Workflow
 
-現在のCI戦略（actプロジェクトを参考）:
+Current CI strategy (inspired by act project):
 
-1. **ローカルテスト**: actでbasic動作確認
-2. **プルリクエスト**: mainブランチへのPRで自動CI実行
-3. **手動実行**: 必要に応じてworkflow_dispatchでCI実行
-4. **リリース**: タグプッシュでリリースワークフロー
+1. **Local Testing**: Use act for basic functionality checks
+2. **Pull Requests**: Automatic CI execution on PRs to main branch
+3. **Manual Execution**: Use workflow_dispatch when needed
+4. **Releases**: Release workflow triggered by tag push
 
-### メリット
-- **効率性**: 不要なCI実行を削減
-- **柔軟性**: 必要な時だけ手動実行
-- **品質保証**: PRで確実なレビュー
+### Benefits
+- **Efficiency**: Reduce unnecessary CI runs
+- **Flexibility**: Manual execution when needed
+- **Quality Assurance**: Reliable review through PRs
 
-## 6. デバッグ
+## 6. Debugging
 
 ```bash
-# 詳細ログ出力
+# Verbose logging
 act --verbose
 
-# ドライラン（実際に実行せずに確認）
+# Dry run (check without execution)
 act --dryrun
 
-# 特定のプラットフォームを指定
+# Specify platform
 act -P ubuntu-latest=catthehacker/ubuntu:act-latest
 ```

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/masahif/linktadoru/internal/config"
+	"linktadoru/internal/config"
 )
 
 // TestStartStop tests the Start and Stop methods
@@ -25,10 +25,10 @@ func TestStartStop(t *testing.T) {
 		SeedURLs:       []string{server.URL},
 		Limit:          1,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	// Use in-memory storage for testing
@@ -77,10 +77,10 @@ func TestStartWithRealStorage(t *testing.T) {
 		SeedURLs:       []string{server.URL},
 		Limit:          1,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	// Create enhanced mock storage that tracks calls
@@ -174,10 +174,10 @@ func TestWorkerErrorHandling(t *testing.T) {
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          1,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 1 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	crawler, err := NewCrawler(config, store)
@@ -216,10 +216,10 @@ func TestStatsReporter(t *testing.T) {
 		SeedURLs:       []string{"http://example.test"},
 		Limit:          5,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	store := &MockStorage{}
@@ -263,11 +263,11 @@ func TestMultipleWorkers(t *testing.T) {
 	config := &config.CrawlConfig{
 		SeedURLs:       []string{server.URL, server.URL + "/page2"},
 		Limit:          2,
-		Concurrency:    2, // Multiple workers
-		RequestDelay:   10 * time.Millisecond,
+		Concurrency:    2,    // Multiple workers
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	store := &EnhancedMockStorage{}
@@ -296,10 +296,10 @@ func TestLimitReached(t *testing.T) {
 		SeedURLs:       []string{"http://example.test"},
 		Limit:          2, // Small limit
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	// Mock storage that provides items

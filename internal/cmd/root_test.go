@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/masahif/linktadoru/internal/config"
+	"linktadoru/internal/config"
 )
 
 func TestSetVersionInfo(t *testing.T) {
@@ -95,10 +95,10 @@ func TestInitializeCrawler(t *testing.T) {
 	cfg := &config.CrawlConfig{
 		SeedURLs:       []string{"https://example.com"},
 		Concurrency:    5,
-		RequestDelay:   time.Second,
+		RequestDelay:   1.0, // 1 second
 		RequestTimeout: 30 * time.Second,
 		UserAgent:      "TestAgent/1.0",
-		RespectRobots:  true,
+		IgnoreRobots:   false,
 		DatabasePath:   dbPath,
 		Limit:          10,
 	}
@@ -132,7 +132,7 @@ func TestRunCrawlerValidation(t *testing.T) {
 	// Create a mock command
 	cmd := &cobra.Command{}
 	cmd.Flags().Int("concurrency", 10, "")
-	cmd.Flags().Duration("delay", time.Second, "")
+	cmd.Flags().Float64("delay", 1.0, "")
 	cmd.Flags().Duration("timeout", 30*time.Second, "")
 	cmd.Flags().String("user-agent", "LinkTadoru/1.0", "")
 	cmd.Flags().Bool("ignore-robots", false, "")
@@ -146,7 +146,7 @@ func TestRunCrawlerValidation(t *testing.T) {
 	_ = viper.BindPFlag("request_delay", cmd.Flags().Lookup("delay"))
 	_ = viper.BindPFlag("request_timeout", cmd.Flags().Lookup("timeout"))
 	_ = viper.BindPFlag("user_agent", cmd.Flags().Lookup("user-agent"))
-	_ = viper.BindPFlag("respect_robots", cmd.Flags().Lookup("ignore-robots"))
+	_ = viper.BindPFlag("ignore_robots", cmd.Flags().Lookup("ignore-robots"))
 	_ = viper.BindPFlag("limit", cmd.Flags().Lookup("limit"))
 	_ = viper.BindPFlag("include_patterns", cmd.Flags().Lookup("include-patterns"))
 	_ = viper.BindPFlag("exclude_patterns", cmd.Flags().Lookup("exclude-patterns"))

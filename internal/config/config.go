@@ -3,7 +3,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -15,9 +17,36 @@ type BasicAuth struct {
 	PasswordEnv string `mapstructure:"password_env" yaml:"password_env"` // Environment variable for password
 }
 
+// AuthType represents the type of authentication
+type AuthType string
+
+const (
+	NoAuth         AuthType = ""
+	BasicAuthType  AuthType = "basic"
+	BearerAuthType AuthType = "bearer"
+	APIKeyAuthType AuthType = "api-key"
+)
+
+// BearerAuth represents Bearer token authentication
+type BearerAuth struct {
+	Token    string `mapstructure:"token" yaml:"token"`         // Bearer token
+	TokenEnv string `mapstructure:"token_env" yaml:"token_env"` // Environment variable for token
+}
+
+// APIKeyAuth represents API key authentication
+type APIKeyAuth struct {
+	Header    string `mapstructure:"header" yaml:"header"`         // Header name (e.g., "X-API-Key")
+	Value     string `mapstructure:"value" yaml:"value"`           // Header value
+	HeaderEnv string `mapstructure:"header_env" yaml:"header_env"` // Environment variable for header name
+	ValueEnv  string `mapstructure:"value_env" yaml:"value_env"`   // Environment variable for header value
+}
+
 // Auth contains authentication configuration
 type Auth struct {
-	Basic *BasicAuth `mapstructure:"basic" yaml:"basic"` // Basic authentication settings
+	Type   AuthType    `mapstructure:"type" yaml:"type"`     // Authentication type
+	Basic  *BasicAuth  `mapstructure:"basic" yaml:"basic"`   // Basic authentication settings
+	Bearer *BearerAuth `mapstructure:"bearer" yaml:"bearer"` // Bearer authentication settings
+	APIKey *APIKeyAuth `mapstructure:"apikey" yaml:"apikey"` // API key authentication settings
 }
 
 // CrawlConfig holds crawler configuration
@@ -25,10 +54,10 @@ type CrawlConfig struct {
 	// Basic crawling parameters
 	SeedURLs       []string      `mapstructure:"seed_urls" yaml:"seed_urls"`             // Starting URLs for crawling
 	Concurrency    int           `mapstructure:"concurrency" yaml:"concurrency"`         // Number of concurrent workers
-	RequestDelay   time.Duration `mapstructure:"request_delay" yaml:"request_delay"`     // Delay between requests
+	RequestDelay   float64       `mapstructure:"request_delay" yaml:"request_delay"`     // Delay between requests
 	RequestTimeout time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"` // HTTP request timeout
 	UserAgent      string        `mapstructure:"user_agent" yaml:"user_agent"`           // HTTP User-Agent header
-	RespectRobots  bool          `mapstructure:"respect_robots" yaml:"respect_robots"`   // Whether to respect robots.txt
+	IgnoreRobots   bool          `mapstructure:"ignore_robots" yaml:"ignore_robots"`     // Whether to ignore robots.txt
 	Limit          int           `mapstructure:"limit" yaml:"limit"`                     // Stop after N pages
 
 	// Authentication
@@ -38,19 +67,21 @@ type CrawlConfig struct {
 	IncludePatterns []string `mapstructure:"include_patterns" yaml:"include_patterns"` // Regex patterns for URLs to include
 	ExcludePatterns []string `mapstructure:"exclude_patterns" yaml:"exclude_patterns"` // Regex patterns for URLs to exclude
 
+	// HTTP Headers
+	Headers []string `mapstructure:"headers" yaml:"headers"` // Custom HTTP headers
+
 	// Database configuration
 	DatabasePath string `mapstructure:"database_path" yaml:"database_path"` // Path to SQLite database file
-
 }
 
 // DefaultConfig returns a configuration with default values
 func DefaultConfig() *CrawlConfig {
 	return &CrawlConfig{
-		Concurrency:    10,
-		RequestDelay:   1 * time.Second,
+		Concurrency:    2,   // Reduced from 10 to 2
+		RequestDelay:   0.1, // 100ms in seconds // Reduced from 1s to 0.1s
 		RequestTimeout: 30 * time.Second,
 		UserAgent:      "LinkTadoru/1.0",
-		RespectRobots:  true,
+		IgnoreRobots:   false,
 		Limit:          0, // unlimited
 		DatabasePath:   "./crawl.db",
 	}
@@ -69,12 +100,22 @@ func (c *CrawlConfig) Validate() error {
 	}
 
 	// Enforce minimum delay of 100ms for proper queue coordination
-	if c.RequestDelay < 100*time.Millisecond {
-		c.RequestDelay = 100 * time.Millisecond
+	if c.RequestDelay < 0.1 {
+		c.RequestDelay = 0.1 // 100ms in seconds
 	}
 
 	if c.DatabasePath == "" {
 		return ErrEmptyDatabasePath
+	}
+
+	// Validate authentication configuration
+	if err := c.validateAuth(); err != nil {
+		return err
+	}
+
+	// Validate headers
+	if err := c.validateHeaders(); err != nil {
+		return err
 	}
 
 	return nil
@@ -104,4 +145,192 @@ func (c *CrawlConfig) GetBasicAuthCredentials() (username, password string) {
 	}
 
 	return username, password
+}
+
+// GetBearerToken returns the bearer token from config or environment
+func (c *CrawlConfig) GetBearerToken() string {
+	if c.Auth == nil || c.Auth.Bearer == nil {
+		return ""
+	}
+
+	bearer := c.Auth.Bearer
+	if bearer.TokenEnv != "" {
+		return os.Getenv(bearer.TokenEnv)
+	}
+	return bearer.Token
+}
+
+// GetAPIKeyCredentials returns the API key header and value from config or environment
+func (c *CrawlConfig) GetAPIKeyCredentials() (header, value string) {
+	if c.Auth == nil || c.Auth.APIKey == nil {
+		return "", ""
+	}
+
+	apikey := c.Auth.APIKey
+
+	// Get header name
+	if apikey.HeaderEnv != "" {
+		header = os.Getenv(apikey.HeaderEnv)
+	} else {
+		header = apikey.Header
+	}
+
+	// Get header value
+	if apikey.ValueEnv != "" {
+		value = os.Getenv(apikey.ValueEnv)
+	} else {
+		value = apikey.Value
+	}
+
+	return header, value
+}
+
+// validateAuth validates authentication configuration
+func (c *CrawlConfig) validateAuth() error {
+	if c.Auth == nil {
+		return nil // No auth is valid
+	}
+
+	// Check for multiple authentication types configured
+	configuredAuthTypes := 0
+	if c.Auth.Basic != nil && (c.Auth.Basic.Username != "" || c.Auth.Basic.Password != "" ||
+		c.Auth.Basic.UsernameEnv != "" || c.Auth.Basic.PasswordEnv != "") {
+		configuredAuthTypes++
+	}
+	if c.Auth.Bearer != nil && (c.Auth.Bearer.Token != "" || c.Auth.Bearer.TokenEnv != "") {
+		configuredAuthTypes++
+	}
+	if c.Auth.APIKey != nil && (c.Auth.APIKey.Header != "" || c.Auth.APIKey.Value != "" ||
+		c.Auth.APIKey.HeaderEnv != "" || c.Auth.APIKey.ValueEnv != "") {
+		configuredAuthTypes++
+	}
+
+	if configuredAuthTypes > 1 {
+		return fmt.Errorf("multiple authentication types configured simultaneously - please use only one")
+	}
+
+	switch c.Auth.Type {
+	case NoAuth:
+		// No authentication required
+		return nil
+	case BasicAuthType:
+		if c.Auth.Basic == nil {
+			return fmt.Errorf("basic auth type specified but no basic auth configuration provided")
+		}
+		username, password := c.GetBasicAuthCredentials()
+		if username == "" || password == "" {
+			return fmt.Errorf("basic auth requires both username and password")
+		}
+	case BearerAuthType:
+		if c.Auth.Bearer == nil {
+			return fmt.Errorf("bearer auth type specified but no bearer auth configuration provided")
+		}
+		token := c.GetBearerToken()
+		if token == "" {
+			return fmt.Errorf("bearer auth requires token")
+		}
+	case APIKeyAuthType:
+		if c.Auth.APIKey == nil {
+			return fmt.Errorf("api-key auth type specified but no api-key auth configuration provided")
+		}
+		header, value := c.GetAPIKeyCredentials()
+		if header == "" || value == "" {
+			return fmt.Errorf("api-key auth requires both header and value")
+		}
+	default:
+		return fmt.Errorf("unsupported authentication type: %s", c.Auth.Type)
+	}
+
+	return nil
+}
+
+// validateHeaders validates HTTP headers format
+func (c *CrawlConfig) validateHeaders() error {
+	for _, header := range c.Headers {
+		// Check if header has proper format "Name: Value"
+		colonIndex := strings.Index(header, ":")
+		if colonIndex <= 0 {
+			return fmt.Errorf("invalid header format '%s': expected 'Name: Value'", header)
+		}
+
+		headerName := strings.TrimSpace(header[:colonIndex])
+		headerValue := strings.TrimSpace(header[colonIndex+1:])
+
+		if headerName == "" {
+			return fmt.Errorf("invalid header format '%s': header name cannot be empty", header)
+		}
+
+		if headerValue == "" {
+			return fmt.Errorf("invalid header format '%s': header value cannot be empty", header)
+		}
+
+		// Check for forbidden headers that should not be set manually
+		forbiddenHeaders := []string{"host", "content-length", "connection"}
+		for _, forbidden := range forbiddenHeaders {
+			if strings.EqualFold(headerName, forbidden) {
+				return fmt.Errorf("cannot set forbidden header '%s'", headerName)
+			}
+		}
+	}
+
+	return nil
+}
+
+// LoadHeadersFromEnv loads headers from environment variables with LT_HEADER_ prefix
+// as specified in Issue #8: LT_HEADER_ACCEPT, LT_HEADER_X_CUSTOM, etc.
+func (c *CrawlConfig) LoadHeadersFromEnv() {
+	const headerPrefix = "LT_HEADER_"
+
+	// Get all environment variables
+	for _, env := range os.Environ() {
+		// Parse key=value
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key, value := parts[0], parts[1]
+
+		// Check if it's a header environment variable
+		if !strings.HasPrefix(key, headerPrefix) {
+			continue
+		}
+
+		// Extract header name (convert LT_HEADER_ACCEPT to Accept)
+		headerName := strings.TrimPrefix(key, headerPrefix)
+		if headerName == "" {
+			continue
+		}
+
+		// Convert X_CUSTOM to X-Custom, ACCEPT to Accept
+		headerName = strings.ReplaceAll(headerName, "_", "-")
+		headerName = strings.ToLower(headerName)
+
+		// Capitalize first letter and letters after hyphens
+		headerParts := strings.Split(headerName, "-")
+		for i, part := range headerParts {
+			if len(part) > 0 {
+				headerParts[i] = strings.ToUpper(string(part[0])) + part[1:]
+			}
+		}
+		headerName = strings.Join(headerParts, "-")
+
+		// Add to headers list in "Name: Value" format
+		headerEntry := fmt.Sprintf("%s: %s", headerName, value)
+
+		// Check if header already exists and replace it
+		found := false
+		for i, existing := range c.Headers {
+			if strings.HasPrefix(existing, headerName+":") {
+				c.Headers[i] = headerEntry
+				found = true
+				break
+			}
+		}
+
+		// If not found, append
+		if !found {
+			c.Headers = append(c.Headers, headerEntry)
+		}
+	}
 }

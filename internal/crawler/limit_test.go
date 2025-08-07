@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/masahif/linktadoru/internal/config"
+	"linktadoru/internal/config"
 )
 
 // MockStorage implements Storage interface for testing
@@ -76,10 +76,10 @@ func TestLimit(t *testing.T) {
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          5,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	// Create test storage using mock
@@ -135,10 +135,10 @@ func TestGetStats(t *testing.T) {
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          0,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	store := &MockStorage{}
@@ -188,10 +188,10 @@ func TestIncrementCounters(t *testing.T) {
 		SeedURLs:       []string{"http://example.com"},
 		Limit:          0,
 		Concurrency:    1,
-		RequestDelay:   10 * time.Millisecond,
+		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		RespectRobots:  false,
+		IgnoreRobots:   true,
 	}
 
 	store := &MockStorage{}
