@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 
-	"github.com/masahif/linktadoru/internal/config"
-	"github.com/masahif/linktadoru/internal/crawler"
-	"github.com/masahif/linktadoru/internal/storage"
+	"linktadoru/internal/config"
+	"linktadoru/internal/crawler"
+	"linktadoru/internal/storage"
 )
 
 var (
 	cfgFile   string
-	cfg       *config.CrawlConfig
 	version   string
 	buildTime string
 )
@@ -52,21 +53,35 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// Configuration file flag
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./linktadoru.yml)")
 
-	// Basic crawling flags
-	rootCmd.Flags().IntP("concurrency", "c", 10, "Number of concurrent workers")
-	rootCmd.Flags().DurationP("delay", "r", 1*time.Second, "Delay between requests")
+	// Configuration management flags
+	rootCmd.Flags().Bool("show-config", false, "Display current configuration in YAML format and exit")
+
+	// Basic crawling flags (updated defaults)
+	rootCmd.Flags().IntP("concurrency", "c", 2, "Number of concurrent workers")
+	rootCmd.Flags().Float64P("delay", "r", 0.1, "Delay between requests in seconds")
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "HTTP request timeout")
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
 	rootCmd.Flags().Bool("ignore-robots", false, "Ignore robots.txt rules")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
 
-	// Authentication flags
-	rootCmd.Flags().String("auth-username", "", "Basic auth username")
-	rootCmd.Flags().String("auth-password", "", "Basic auth password")
-	rootCmd.Flags().String("auth-username-env", "LT_AUTH_USERNAME", "Environment variable for username")
-	rootCmd.Flags().String("auth-password-env", "LT_AUTH_PASSWORD", "Environment variable for password")
+	// Authentication type flag
+	rootCmd.Flags().String("auth-type", "", "Authentication type: 'basic', 'bearer', or 'api-key'")
+
+	// Basic authentication flags
+	rootCmd.Flags().String("auth-username", "", "Username for basic authentication")
+	rootCmd.Flags().String("auth-password", "", "Password for basic authentication")
+
+	// Bearer authentication flags
+	rootCmd.Flags().String("auth-token", "", "Bearer token for authorization header")
+
+	// API Key authentication flags
+	rootCmd.Flags().String("auth-header", "", "API key header name (e.g., X-API-Key)")
+	rootCmd.Flags().String("auth-value", "", "API key header value")
+
+	// HTTP Headers flags
+	rootCmd.Flags().StringSliceP("header", "H", []string{}, "Custom HTTP headers in 'Name: Value' format (use multiple times for multiple headers)")
 
 	// URL filtering flags
 	rootCmd.Flags().StringSlice("include-patterns", []string{}, "Regex patterns for URLs to include")
@@ -75,22 +90,35 @@ func init() {
 	// Database flags
 	rootCmd.Flags().StringP("database", "d", "./crawl.db", "Path to SQLite database file")
 
-	// Bind flags to viper
-	_ = viper.BindPFlag("concurrency", rootCmd.Flags().Lookup("concurrency"))
-	_ = viper.BindPFlag("request_delay", rootCmd.Flags().Lookup("delay"))
-	_ = viper.BindPFlag("request_timeout", rootCmd.Flags().Lookup("timeout"))
-	_ = viper.BindPFlag("user_agent", rootCmd.Flags().Lookup("user-agent"))
-	_ = viper.BindPFlag("respect_robots", rootCmd.Flags().Lookup("ignore-robots"))
-	_ = viper.BindPFlag("limit", rootCmd.Flags().Lookup("limit"))
-	_ = viper.BindPFlag("include_patterns", rootCmd.Flags().Lookup("include-patterns"))
-	_ = viper.BindPFlag("exclude_patterns", rootCmd.Flags().Lookup("exclude-patterns"))
-	_ = viper.BindPFlag("database_path", rootCmd.Flags().Lookup("database"))
+	// Bind basic flags to viper
+	bindFlags := []struct {
+		viperKey string
+		flagName string
+	}{
+		{"concurrency", "concurrency"},
+		{"request_delay", "delay"},
+		{"request_timeout", "timeout"},
+		{"user_agent", "user-agent"},
+		{"ignore_robots", "ignore-robots"},
+		{"limit", "limit"},
+		{"include_patterns", "include-patterns"},
+		{"exclude_patterns", "exclude-patterns"},
+		{"database_path", "database"},
+		{"headers", "header"},
+		{"auth.type", "auth-type"},
+		{"auth.basic.username", "auth-username"},
+		{"auth.basic.password", "auth-password"},
+		{"auth.bearer.token", "auth-token"},
+		{"auth.apikey.header", "auth-header"},
+		{"auth.apikey.value", "auth-value"},
+	}
 
-	// Bind auth flags to viper
-	_ = viper.BindPFlag("auth.basic.username", rootCmd.Flags().Lookup("auth-username"))
-	_ = viper.BindPFlag("auth.basic.password", rootCmd.Flags().Lookup("auth-password"))
-	_ = viper.BindPFlag("auth.basic.username_env", rootCmd.Flags().Lookup("auth-username-env"))
-	_ = viper.BindPFlag("auth.basic.password_env", rootCmd.Flags().Lookup("auth-password-env"))
+	for _, bind := range bindFlags {
+		if err := viper.BindPFlag(bind.viperKey, rootCmd.Flags().Lookup(bind.flagName)); err != nil {
+			// Log the error but continue - non-critical for operation
+			fmt.Fprintf(os.Stderr, "Warning: failed to bind flag %s: %v\n", bind.flagName, err)
+		}
+	}
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -102,12 +130,12 @@ func initConfig() {
 		// Search for config in current directory
 		viper.AddConfigPath(".")
 		viper.SetConfigType("yaml")
-		viper.SetConfigName("config")
+		viper.SetConfigName("linktadoru") // Changed from "config" to "linktadoru"
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
 	viper.SetEnvPrefix("LT")
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
@@ -115,9 +143,53 @@ func initConfig() {
 	}
 }
 
+func generateUserAgent() string {
+	if version != "" && version != "dev" {
+		return fmt.Sprintf("LinkTadoru/%s", version)
+	}
+	return "LinkTadoru/dev"
+}
+
+func showCurrentConfig(cfg *config.CrawlConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("configuration is nil")
+	}
+
+	// Validate configuration before showing it
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Configuration validation failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Displaying configuration anyway...\n\n")
+	}
+
+	yamlData, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to YAML: %w", err)
+	}
+
+	// Add header comment to the output
+	fmt.Printf("# Current LinkTadoru Configuration\n")
+	fmt.Printf("# Generated at: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Printf("# Configuration file search paths: ./linktadoru.yml\n")
+	fmt.Printf("# Environment variables prefix: LT_\n\n")
+
+	fmt.Print(string(yamlData))
+
+	// Add footer with additional information
+	fmt.Printf("\n# Configuration source priority:\n")
+	fmt.Printf("# 1. Command-line arguments (highest priority)\n")
+	fmt.Printf("# 2. Environment variables (LT_ prefix)\n")
+	fmt.Printf("# 3. Configuration file (linktadoru.yml)\n")
+	fmt.Printf("# 4. Default values (lowest priority)\n")
+
+	return nil
+}
+
 func runCrawler(cmd *cobra.Command, args []string) error {
 	// Load configuration
-	cfg = config.DefaultConfig()
+	// Handle --show-config flag first
+	showConfig, _ := cmd.Flags().GetBool("show-config")
+
+	cfg := config.DefaultConfig()
 
 	// Set seed URLs from command line arguments
 	cfg.SeedURLs = args
@@ -127,10 +199,17 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Handle the inverted logic for respect_robots flag
-	if cmd.Flags().Changed("ignore-robots") {
-		ignoreRobots, _ := cmd.Flags().GetBool("ignore-robots")
-		cfg.RespectRobots = !ignoreRobots
+	// Load headers from environment variables (Issue #8 specification)
+	cfg.LoadHeadersFromEnv()
+
+	// Update User-Agent with dynamic version if not explicitly set
+	if !cmd.Flags().Changed("user-agent") && cfg.UserAgent == "LinkTadoru/1.0" {
+		cfg.UserAgent = generateUserAgent()
+	}
+
+	// Handle --show-config: display current configuration and exit
+	if showConfig {
+		return showCurrentConfig(cfg)
 	}
 
 	// Validate configuration
@@ -154,7 +233,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Concurrency: %d\n", cfg.Concurrency)
 	fmt.Printf("  Request Delay: %v\n", cfg.RequestDelay)
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)
-	fmt.Printf("  Respect Robots: %t\n", cfg.RespectRobots)
+	fmt.Printf("  Ignore Robots: %t\n", cfg.IgnoreRobots)
 
 	// Display auth status without exposing credentials
 	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
@@ -182,19 +261,6 @@ func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, error) {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
-	// Convert config to crawler config
-	crawlConfig := &config.CrawlConfig{
-		SeedURLs:        cfg.SeedURLs,
-		Concurrency:     cfg.Concurrency,
-		RequestDelay:    cfg.RequestDelay,
-		RequestTimeout:  cfg.RequestTimeout,
-		UserAgent:       cfg.UserAgent,
-		RespectRobots:   cfg.RespectRobots,
-		IncludePatterns: cfg.IncludePatterns,
-		ExcludePatterns: cfg.ExcludePatterns,
-		DatabasePath:    cfg.DatabasePath,
-		Limit:           cfg.Limit,
-	}
-
-	return crawler.NewCrawler(crawlConfig, store)
+	// Pass the complete config directly to the crawler
+	return crawler.NewCrawler(cfg, store)
 }

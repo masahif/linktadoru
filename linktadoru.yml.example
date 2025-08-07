@@ -1,0 +1,87 @@
+# LinkTadoru Configuration File Example
+# Save this as linktadoru.yml in your project directory
+
+# Basic crawling settings (improved defaults)
+concurrency: 2              # Number of concurrent workers (default: 2, was 10)
+request_delay: 0.1           # Delay between requests in seconds (default: 0.1, was 1.0)
+request_timeout: 30.0        # HTTP request timeout in seconds
+user_agent: "LinkTadoru/1.0"       # User-Agent header (version will be dynamically set if not specified)
+ignore_robots: false        # Whether to ignore robots.txt rules (default: respect robots.txt)
+limit: 0                    # Stop after N pages (0 = unlimited)
+
+# Database configuration
+database_path: "./linktadoru.db"  # Path to SQLite database file
+
+# URL filtering patterns
+include_patterns: []         # Regex patterns for URLs to include (empty = include all)
+exclude_patterns:           # Regex patterns for URLs to exclude
+  - "\\.pdf$"              # Exclude PDF files
+  - "/admin/.*"            # Exclude admin pages
+  - "\\.zip$"              # Exclude ZIP files
+  - "\\.exe$"              # Exclude executable files
+
+# Authentication configuration
+# Note: You can use only one authentication method at a time
+auth:
+  type: ""                  # Authentication type: "", "basic", "bearer", or "api-key"
+  
+  # Basic Authentication
+  basic:
+    username: "user"        # Basic auth username
+    password: "pass"        # Basic auth password
+    # Alternative: use environment variables
+    # username_env: "LT_AUTH_BASIC_USERNAME"
+    # password_env: "LT_AUTH_BASIC_PASSWORD"
+  
+  # Bearer Token Authentication
+  bearer:
+    token: "your_token_here"  # Bearer token
+    # Alternative: use environment variable
+    # token_env: "LT_AUTH_BEARER_TOKEN"
+  
+  # API Key Authentication
+  apikey:
+    header: "X-API-Key"     # Header name for API key
+    value: "your_key_here"  # API key value
+    # Alternative: use environment variables
+    # header_env: "LT_AUTH_API_KEY_HEADER"
+    # value_env: "LT_AUTH_API_KEY_VALUE"
+
+# Custom HTTP headers
+headers:
+  - "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+  - "Accept-Language: en-us,en;q=0.5"
+  - "Accept-Encoding: gzip, deflate, br"
+  - "Cache-Control: no-cache"
+  # Add custom headers as needed:
+  # - "X-Custom-Header: CustomValue"
+  # - "X-API-Version: v1"
+
+# Example configurations for different use cases:
+
+# Fast crawling (be careful with rate limiting):
+# concurrency: 5
+# request_delay: 0.05
+
+# Conservative crawling:
+# concurrency: 1
+# request_delay: 2.0
+
+# API-based crawling:
+# auth:
+#   type: "api-key"
+#   apikey:
+#     header: "X-API-Key"
+#     value: "your-api-key"
+# headers:
+#   - "Accept: application/json"
+#   - "Content-Type: application/json"
+
+# Site-specific crawling with custom user agent:
+# user_agent: "MyBot/1.0 (https://example.com/bot)"
+# include_patterns:
+#   - "^https://target-site\\.com/.*"
+# exclude_patterns:
+#   - "/login"
+#   - "/admin"
+#   - "\\.pdf$"

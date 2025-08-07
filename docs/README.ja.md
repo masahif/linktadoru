@@ -13,14 +13,14 @@
 - **[Technical Specification](technical-specification.md)** - Architecture, implementation details, and design decisions (English)
 
 ### 設定
-- **[設定リファレンス](../config.yaml.example)** - 完全な設定オプションと例
+- **[設定リファレンス](../linktadoru.yml.example)** - 完全な設定オプションと例
 
 ## 🚀 クイックスタート
 
 LinkTadoruが初めてですか？ここから始めてください：
 
 1. コマンドライン使用法について [基本的な使用例](basic-usage.ja.md) を読む
-2. セットアップオプションについて [設定リファレンス](../config.yaml.example) を確認
+2. セットアップオプションについて [設定リファレンス](../linktadoru.yml.example) を確認
 3. より詳細な情報が必要な場合は [技術仕様書](technical-specification.ja.md) を参照
 
 ## 🏗️ アーキテクチャ

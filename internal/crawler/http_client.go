@@ -12,10 +12,15 @@ import (
 
 // HTTPClient handles HTTP requests with performance metrics
 type HTTPClient struct {
-	client    *http.Client
-	userAgent string
-	username  string // Basic auth username
-	password  string // Basic auth password
+	client        *http.Client
+	userAgent     string
+	authType      string
+	username      string            // Basic auth username
+	password      string            // Basic auth password
+	bearerToken   string            // Bearer token
+	apiKeyHeader  string            // API key header name
+	apiKeyValue   string            // API key header value
+	customHeaders map[string]string // Custom headers
 }
 
 // HTTPMetrics contains performance metrics for an HTTP request
@@ -62,15 +67,48 @@ func NewHTTPClient(userAgent string, timeout time.Duration) *HTTPClient {
 	}
 
 	return &HTTPClient{
-		client:    client,
-		userAgent: userAgent,
+		client:        client,
+		userAgent:     userAgent,
+		customHeaders: make(map[string]string),
 	}
 }
 
 // SetBasicAuth configures basic authentication for HTTP requests
 func (h *HTTPClient) SetBasicAuth(username, password string) {
+	h.authType = "basic"
 	h.username = username
 	h.password = password
+}
+
+// SetBearerAuth configures bearer token authentication for HTTP requests
+func (h *HTTPClient) SetBearerAuth(token string) {
+	h.authType = "bearer"
+	h.bearerToken = token
+}
+
+// SetAPIKeyAuth configures API key authentication for HTTP requests
+func (h *HTTPClient) SetAPIKeyAuth(header, value string) {
+	h.authType = "apikey"
+	h.apiKeyHeader = header
+	h.apiKeyValue = value
+}
+
+// SetCustomHeaders sets custom HTTP headers
+func (h *HTTPClient) SetCustomHeaders(headers map[string]string) {
+	if h.customHeaders == nil {
+		h.customHeaders = make(map[string]string)
+	}
+	for k, v := range headers {
+		h.customHeaders[k] = v
+	}
+}
+
+// AddCustomHeader adds a single custom HTTP header
+func (h *HTTPClient) AddCustomHeader(name, value string) {
+	if h.customHeaders == nil {
+		h.customHeaders = make(map[string]string)
+	}
+	h.customHeaders[name] = value
 }
 
 // Get performs an HTTP GET request with comprehensive performance tracking.
@@ -90,8 +128,24 @@ func (h *HTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 	// Don't set Accept-Encoding manually - let Go handle compression automatically
 
 	// Set basic authentication if configured
-	if h.username != "" && h.password != "" {
-		req.SetBasicAuth(h.username, h.password)
+	switch h.authType {
+	case "basic":
+		if h.username != "" && h.password != "" {
+			req.SetBasicAuth(h.username, h.password)
+		}
+	case "bearer":
+		if h.bearerToken != "" {
+			req.Header.Set("Authorization", "Bearer "+h.bearerToken)
+		}
+	case "apikey":
+		if h.apiKeyHeader != "" && h.apiKeyValue != "" {
+			req.Header.Set(h.apiKeyHeader, h.apiKeyValue)
+		}
+	}
+
+	// Set custom headers
+	for name, value := range h.customHeaders {
+		req.Header.Set(name, value)
 	}
 
 	// Setup performance tracking
@@ -134,7 +188,12 @@ func (h *HTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log error but don't fail the request
+			_ = err
+		}
+	}()
 
 	// Calculate TTFB if we got the first byte time
 	if !firstByteTime.IsZero() {

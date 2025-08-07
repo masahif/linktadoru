@@ -13,14 +13,14 @@ This directory contains comprehensive documentation for LinkTadoru.
 - **[Technical Specification (Japanese)](technical-specification.ja.md)** - 技術仕様書（日本語）
 
 ### Configuration
-- **[Configuration Reference](../config.yaml.example)** - Complete configuration options and examples
+- **[Configuration Reference](../linktadoru.yml.example)** - Complete configuration options and examples
 
 ## 🚀 Quick Start
 
 New to LinkTadoru? Start here:
 
 1. Read the [Basic Usage Examples](basic-usage.md) for command-line usage
-2. Check the [Configuration Reference](../config.yaml.example) for setup options
+2. Check the [Configuration Reference](../linktadoru.yml.example) for setup options
 3. Explore the [Technical Specification](technical-specification.md) for detailed architecture information
 
 ## 🏗️ Architecture

@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/masahif/linktadoru/internal/config"
+	"linktadoru/internal/config"
 )
 
 // DefaultCrawler implements the Crawler interface
@@ -43,14 +44,57 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	httpClient := NewHTTPClient(config.UserAgent, config.RequestTimeout)
 
 	// Configure basic authentication if provided
-	if username, password := config.GetBasicAuthCredentials(); username != "" && password != "" {
-		httpClient.SetBasicAuth(username, password)
+	if config.Auth != nil {
+		switch string(config.Auth.Type) {
+		case "basic":
+			if username, password := config.GetBasicAuthCredentials(); username != "" && password != "" {
+				httpClient.SetBasicAuth(username, password)
+			}
+		case "bearer":
+			if token := config.GetBearerToken(); token != "" {
+				httpClient.SetBearerAuth(token)
+			}
+		case "api-key":
+			if header, value := config.GetAPIKeyCredentials(); header != "" && value != "" {
+				httpClient.SetAPIKeyAuth(header, value)
+			}
+		}
+	}
+
+	// Set custom headers if provided
+	if len(config.Headers) > 0 {
+		headerMap := make(map[string]string)
+		for _, header := range config.Headers {
+			// Parse "Key: Value" format
+			colonIndex := strings.Index(header, ":")
+			if colonIndex <= 0 {
+				// Skip invalid headers - validation should have caught this
+				log.Printf("Warning: skipping invalid header format: %s", header)
+				continue
+			}
+
+			key := strings.TrimSpace(header[:colonIndex])
+			value := strings.TrimSpace(header[colonIndex+1:])
+
+			if key == "" || value == "" {
+				// Skip empty key or value
+				log.Printf("Warning: skipping header with empty key or value: %s", header)
+				continue
+			}
+
+			headerMap[key] = value
+		}
+
+		if len(headerMap) > 0 {
+			httpClient.SetCustomHeaders(headerMap)
+			log.Printf("Set %d custom headers", len(headerMap))
+		}
 	}
 
 	// Initialize components
 	processor := NewPageProcessor(httpClient)
-	rateLimiter := NewRateLimiter(config.RequestDelay)
-	robotsParser := NewRobotsParser(httpClient, !config.RespectRobots)
+	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
+	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobots)
 
 	crawler := &DefaultCrawler{
 		config:       config,
@@ -183,7 +227,7 @@ func (c *DefaultCrawler) worker(id int) {
 			item, err := c.storage.GetNextFromQueue()
 			if err != nil {
 				log.Printf("Worker %d: failed to get from queue: %v", id, err)
-				time.Sleep(c.config.RequestDelay)
+				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 				continue
 			}
 
@@ -200,12 +244,12 @@ func (c *DefaultCrawler) worker(id int) {
 				}
 
 				// Wait and try again with configured delay
-				time.Sleep(c.config.RequestDelay)
+				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 				continue
 			}
 
 			// Check robots.txt
-			if c.config.RespectRobots {
+			if !c.config.IgnoreRobots {
 				allowed, err := c.robotsParser.IsAllowed(c.ctx, item.URL, c.config.UserAgent)
 				if err != nil {
 					log.Printf("Worker %d: robots.txt check failed for %s: %v", id, item.URL, err)
@@ -216,7 +260,7 @@ func (c *DefaultCrawler) worker(id int) {
 					if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
 						log.Printf("Worker %d: failed to save robots error: %v", id, err)
 					}
-					time.Sleep(c.config.RequestDelay)
+					time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 					continue
 				}
 			}
@@ -236,7 +280,7 @@ func (c *DefaultCrawler) worker(id int) {
 					log.Printf("Worker %d: failed to save processing error: %v", id, saveErr)
 				}
 				c.incrementErrorCount()
-				time.Sleep(c.config.RequestDelay)
+				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 				continue
 			}
 
@@ -292,7 +336,7 @@ func (c *DefaultCrawler) worker(id int) {
 			}
 
 			// Delay after processing to allow other workers to coordinate
-			time.Sleep(c.config.RequestDelay)
+			time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 		}
 	}
 }
