@@ -206,17 +206,35 @@ CREATE TABLE pages (
 **サポートテーブル:**
 
 ```sql
--- リンクテーブル  
-CREATE TABLE links (
+-- リンク関係テーブル（ページIDによる正規化）
+-- 注意: UNIQUE制約により重複関係を防止。同じリンクが異なるanchor_textで
+-- 複数回見つかった場合、最初の出現のみが保存されます。
+CREATE TABLE link_relations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_url TEXT NOT NULL,
-    target_url TEXT NOT NULL,
+    source_page_id INTEGER NOT NULL,
+    target_page_id INTEGER NOT NULL,
     anchor_text TEXT,
     link_type TEXT,
     rel_attribute TEXT,
     crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source_url, target_url)
+    FOREIGN KEY (source_page_id) REFERENCES pages(id),
+    FOREIGN KEY (target_page_id) REFERENCES pages(id),
+    UNIQUE(source_page_id, target_page_id)
 );
+
+-- ユーザー向けリンクビュー（URLベースのインターフェース維持）
+CREATE VIEW links AS
+SELECT 
+    lr.id,
+    p1.url AS source_url,
+    p2.url AS target_url,
+    lr.anchor_text,
+    lr.link_type,
+    lr.rel_attribute,
+    lr.crawled_at
+FROM link_relations lr
+JOIN pages p1 ON lr.source_page_id = p1.id
+JOIN pages p2 ON lr.target_page_id = p2.id;
 
 -- 詳細エラー追跡用の別テーブル
 CREATE TABLE crawl_errors (

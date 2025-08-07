@@ -206,17 +206,35 @@ CREATE TABLE pages (
 **Supporting Tables:**
 
 ```sql
--- Links table  
-CREATE TABLE links (
+-- Link relationships table (normalized with page IDs)
+-- NOTE: UNIQUE constraint prevents duplicate relationships. If the same link
+-- is found multiple times with different anchor_text, only the first is stored.
+CREATE TABLE link_relations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_url TEXT NOT NULL,
-    target_url TEXT NOT NULL,
+    source_page_id INTEGER NOT NULL,
+    target_page_id INTEGER NOT NULL,
     anchor_text TEXT,
     link_type TEXT,
     rel_attribute TEXT,
     crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source_url, target_url)
+    FOREIGN KEY (source_page_id) REFERENCES pages(id),
+    FOREIGN KEY (target_page_id) REFERENCES pages(id),
+    UNIQUE(source_page_id, target_page_id)
 );
+
+-- User-friendly links view (maintains URL-based interface)
+CREATE VIEW links AS
+SELECT 
+    lr.id,
+    p1.url AS source_url,
+    p2.url AS target_url,
+    lr.anchor_text,
+    lr.link_type,
+    lr.rel_attribute,
+    lr.crawled_at
+FROM link_relations lr
+JOIN pages p1 ON lr.source_page_id = p1.id
+JOIN pages p2 ON lr.target_page_id = p2.id;
 
 -- Separate errors table for detailed error tracking
 CREATE TABLE crawl_errors (
