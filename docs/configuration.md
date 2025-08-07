@@ -21,7 +21,7 @@ Flags:
       --auth-value string          API key header value
   -c, --concurrency int            Number of concurrent workers (default 2)
       --config string              config file (default is ./linktadoru.yml)
-  -d, --database string            Path to SQLite database file (default "./crawl.db")
+  -d, --database string            Path to SQLite database file (default "./linktadoru.db")
   -r, --delay float                Delay between requests in seconds (default 0.1)
       --exclude-patterns strings   Regex patterns for URLs to exclude
   -H, --header strings             Custom HTTP headers in 'Name: Value' format (use multiple times for multiple headers)
@@ -77,7 +77,7 @@ exclude_patterns:
   - ".*#.*"
 
 # Storage configuration
-database_path: "./crawl.db"
+database_path: "./linktadoru.db"
 ```
 
 ## Environment Variables
@@ -136,7 +136,7 @@ export LT_HEADER_X_CUSTOM="MyCustomValue"
 | user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
 | ignore_robots | `--ignore-robots` | `LT_IGNORE_ROBOTS` | false | Ignore robots.txt rules |
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
-| database_path | `-d, --database` | `LT_DATABASE_PATH` | ./crawl.db | SQLite database file path |
+| database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
 | **URL Filtering** |
 | include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
 | exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |

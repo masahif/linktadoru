@@ -128,8 +128,8 @@ WHERE status = 'error';
 
 ```bash
 # CSVにエクスポート
-sqlite3 -header -csv crawl.db "SELECT * FROM pages WHERE status='completed';" > pages.csv
-sqlite3 -header -csv crawl.db "SELECT * FROM links;" > links.csv
+sqlite3 -header -csv linktadoru.db "SELECT * FROM pages WHERE status='completed';" > pages.csv
+sqlite3 -header -csv linktadoru.db "SELECT * FROM links;" > links.csv
 ```
 
 ## パフォーマンスチューニング
@@ -169,8 +169,8 @@ user_agent: "PoliteBot/1.0"
 
 ```bash
 # 実行中のキュー状況を確認
-sqlite3 crawl.db "SELECT status, COUNT(*) FROM pages GROUP BY status;"
+sqlite3 linktadoru.db "SELECT status, COUNT(*) FROM pages GROUP BY status;"
 
 # 最近のエラーを表示
-sqlite3 crawl.db "SELECT url, error_message FROM crawl_errors ORDER BY occurred_at DESC LIMIT 5;"
+sqlite3 linktadoru.db "SELECT url, error_message FROM crawl_errors ORDER BY occurred_at DESC LIMIT 5;"
 ```

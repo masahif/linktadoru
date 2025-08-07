@@ -34,8 +34,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected limit 0, got %d", cfg.Limit)
 	}
 
-	if cfg.DatabasePath != "./crawl.db" {
-		t.Errorf("Expected database path './crawl.db', got %s", cfg.DatabasePath)
+	if cfg.DatabasePath != "./linktadoru.db" {
+		t.Errorf("Expected database path './linktadoru.db', got %s", cfg.DatabasePath)
 	}
 }
 

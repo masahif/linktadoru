@@ -254,7 +254,7 @@ When modifying the database schema:
 
 ```bash
 # Open database
-sqlite3 crawl.db
+sqlite3 linktadoru.db
 
 # Common queries
 .tables
