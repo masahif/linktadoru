@@ -235,10 +235,14 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		// Check if queue has any items (queued or processing)
 		hasWork, err := tempStorage.HasQueuedItems()
 		if err != nil {
-			tempStorage.Close()
+			if closeErr := tempStorage.Close(); closeErr != nil {
+				return fmt.Errorf("failed to check queue status: %w (close error: %v)", err, closeErr)
+			}
 			return fmt.Errorf("failed to check queue status: %w", err)
 		}
-		tempStorage.Close()
+		if closeErr := tempStorage.Close(); closeErr != nil {
+			return fmt.Errorf("failed to close temporary storage: %w", closeErr)
+		}
 		
 		if !hasWork {
 			fmt.Printf("No URLs provided and no queued items found in database %s\n", cfg.DatabasePath)
