@@ -217,6 +217,38 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
+	// Validate startup conditions: prevent running without URLs and without existing database
+	if len(cfg.SeedURLs) == 0 {
+		// No seed URLs provided, check if database exists for resume
+		if _, err := os.Stat(cfg.DatabasePath); os.IsNotExist(err) {
+			return fmt.Errorf("no URLs provided and no existing database found at %s\nUsage: %s [URLs...] or ensure database exists for resume operation", 
+				cfg.DatabasePath, os.Args[0])
+		}
+		
+		// Database exists, but let's check if it has any queued items
+		// Create a temporary storage instance to check queue status
+		tempStorage, err := storage.NewSQLiteStorage(cfg.DatabasePath)
+		if err != nil {
+			return fmt.Errorf("failed to open database %s: %w", cfg.DatabasePath, err)
+		}
+		
+		// Check if queue has any items (queued or processing)
+		hasWork, err := tempStorage.HasQueuedItems()
+		if err != nil {
+			tempStorage.Close()
+			return fmt.Errorf("failed to check queue status: %w", err)
+		}
+		tempStorage.Close()
+		
+		if !hasWork {
+			fmt.Printf("No URLs provided and no queued items found in database %s\n", cfg.DatabasePath)
+			fmt.Printf("Nothing to crawl. Exiting.\n")
+			return nil
+		}
+		
+		fmt.Printf("Resuming crawl from existing database: %s\n", cfg.DatabasePath)
+	}
+
 	// Create database directory if it doesn't exist
 	dbDir := filepath.Dir(cfg.DatabasePath)
 	if err := os.MkdirAll(dbDir, 0750); err != nil {
