@@ -73,12 +73,7 @@ test-clean:
 .PHONY: lint
 lint:
 	@echo "Running linter..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
-		exit 1; \
-	fi
+	golangci-lint run ./...
 
 ## fmt: Format code
 .PHONY: fmt
@@ -196,6 +191,24 @@ ci: deps check build
 test-ci:
 	@echo "Running tests for CI..."
 	go test -v -race -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
+
+## act: Run GitHub Actions locally with act
+.PHONY: act
+act:
+	@echo "Running GitHub Actions locally..."
+	act -W .github/workflows/ci.yml
+
+## act-list: List available GitHub Actions workflows
+.PHONY: act-list
+act-list:
+	@echo "Available GitHub Actions workflows:"
+	act -l
+
+## act-test: Run only test job locally  
+.PHONY: act-test
+act-test:
+	@echo "Running test job locally..."
+	act -W .github/workflows/ci.yml -j test
 
 .PHONY: all
 all: clean deps check build

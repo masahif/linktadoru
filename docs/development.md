@@ -5,6 +5,8 @@
 - Go 1.23 or higher
 - Make (optional but recommended)
 - golangci-lint (for linting)
+- Docker (for containerized development)
+- act (optional, for local GitHub Actions testing)
 
 ## Project Structure
 
@@ -101,6 +103,63 @@ make fmt
 gofmt -l .
 ```
 
+## Development Environments
+
+### Local Development (Traditional)
+
+Standard Go development with local tools:
+```bash
+# Install prerequisites
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Run development commands
+make test
+make lint
+make check
+```
+
+### VS Code DevContainer (Recommended)
+
+For the best integrated development experience:
+
+**Prerequisites:**
+- VS Code
+- Docker Desktop  
+- Dev Containers extension
+
+**Usage:**
+1. Open project in VS Code
+2. Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+3. "Dev Containers: Reopen in Container"
+4. Wait for container build (first time only)
+5. All development tools ready to use
+
+**Benefits:**
+- Complete toolchain pre-installed
+- VS Code integration (debugging, IntelliSense)
+- Consistent environment across team members
+
+### Docker-based Development (Command Line)
+
+For consistent environment without VS Code:
+
+```bash
+# Build development image
+docker build -t linktadoru-dev .devcontainer/
+
+# Run tests
+docker run --rm -v $(pwd):/workspace linktadoru-dev make test
+
+# Run quality checks
+docker run --rm -v $(pwd):/workspace linktadoru-dev make check
+
+# Interactive shell
+docker run -it --rm -v $(pwd):/workspace linktadoru-dev bash
+
+# Local GitHub Actions testing
+docker run --rm -v $(pwd):/workspace -v /var/run/docker.sock:/var/run/docker.sock linktadoru-dev act
+```
+
 ## Development Workflow
 
 ### 1. Create Feature Branch
@@ -137,10 +196,13 @@ brew install act  # macOS
 # or follow docs/github-actions-local-testing.md
 
 # Run CI locally with act
-act -W .github/workflows/ci.yml
+make act
 
 # Test specific job
-act -W .github/workflows/ci.yml -j test
+make act-test
+
+# List available workflows
+make act-list
 ```
 
 ### 4. Commit Changes
