@@ -213,18 +213,29 @@ func (s *SQLiteStorage) SavePageError(id int, errorType, errorMessage string) er
 	return nil
 }
 
-// SaveLink saves a single link relationship (legacy method)
+// SaveLink saves a single link relationship using page IDs
 func (s *SQLiteStorage) SaveLink(link *crawler.LinkData) error {
+	// Get or create page IDs for source and target URLs
+	sourceID, err := s.getOrCreatePageID(link.SourceURL)
+	if err != nil {
+		return fmt.Errorf("failed to get source page ID for %s: %w", link.SourceURL, err)
+	}
+
+	targetID, err := s.getOrCreatePageID(link.TargetURL)
+	if err != nil {
+		return fmt.Errorf("failed to get target page ID for %s: %w", link.TargetURL, err)
+	}
+
 	query := `
-		INSERT OR IGNORE INTO links (
-			source_url, target_url, anchor_text, link_type, 
+		INSERT OR IGNORE INTO link_relations (
+			source_page_id, target_page_id, anchor_text, link_type, 
 			rel_attribute, crawled_at
 		) VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := s.db.Exec(query,
-		link.SourceURL,
-		link.TargetURL,
+	_, err = s.db.Exec(query,
+		sourceID,
+		targetID,
 		link.AnchorText,
 		link.LinkType,
 		link.RelAttribute,
@@ -237,7 +248,7 @@ func (s *SQLiteStorage) SaveLink(link *crawler.LinkData) error {
 	return nil
 }
 
-// SaveLinks saves multiple link relationships in a single transaction (batch operation)
+// SaveLinks saves multiple link relationships in a single transaction using page IDs
 func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	if len(links) == 0 {
 		return nil
@@ -249,9 +260,56 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Pre-fetch or create all page IDs in bulk to improve performance
+	urlSet := make(map[string]bool)
+	for _, link := range links {
+		urlSet[link.SourceURL] = true
+		urlSet[link.TargetURL] = true
+	}
+
+	urlToID := make(map[string]int)
+	for url := range urlSet {
+		// Use the same getOrCreatePageID logic but within the transaction
+		var id int
+		err := tx.QueryRow("SELECT id FROM pages WHERE url = ?", url).Scan(&id)
+		if err == nil {
+			urlToID[url] = id
+			continue
+		}
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("failed to query page ID for %s: %w", url, err)
+		}
+
+		// Create page if it doesn't exist
+		result, err := tx.Exec(
+			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'queued', ?)",
+			url, time.Now(),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert page %s: %w", url, err)
+		}
+
+		id64, err := result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("failed to get last insert ID for %s: %w", url, err)
+		}
+
+		if id64 == 0 {
+			// Race condition, get the existing ID
+			err := tx.QueryRow("SELECT id FROM pages WHERE url = ?", url).Scan(&id)
+			if err != nil {
+				return fmt.Errorf("failed to get existing page ID for %s: %w", url, err)
+			}
+			urlToID[url] = id
+		} else {
+			urlToID[url] = int(id64)
+		}
+	}
+
+	// Now insert all links using the pre-fetched IDs
 	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO links (
-			source_url, target_url, anchor_text, link_type, 
+		INSERT OR IGNORE INTO link_relations (
+			source_page_id, target_page_id, anchor_text, link_type, 
 			rel_attribute, crawled_at
 		) VALUES (?, ?, ?, ?, ?, ?)
 	`)
@@ -266,9 +324,12 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	}()
 
 	for _, link := range links {
+		sourceID := urlToID[link.SourceURL]
+		targetID := urlToID[link.TargetURL]
+
 		if _, err := stmt.Exec(
-			link.SourceURL,
-			link.TargetURL,
+			sourceID,
+			targetID,
 			link.AnchorText,
 			link.LinkType,
 			link.RelAttribute,
@@ -422,4 +483,43 @@ func (s *SQLiteStorage) GetURLStatus(url string) (status string, exists bool) {
 		return "", false
 	}
 	return status, true
+}
+
+// getOrCreatePageID gets the page ID for a URL, creating it if it doesn't exist
+func (s *SQLiteStorage) getOrCreatePageID(url string) (int, error) {
+	// First try to get existing page ID
+	var id int
+	err := s.db.QueryRow("SELECT id FROM pages WHERE url = ?", url).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to query page ID: %w", err)
+	}
+
+	// Page doesn't exist, create it with 'queued' status
+	result, err := s.db.Exec(
+		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'queued', ?)",
+		url, time.Now(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert page: %w", err)
+	}
+
+	// Get the ID of the inserted row
+	id64, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
+
+	// If INSERT OR IGNORE didn't insert (URL already exists), get the existing ID
+	if id64 == 0 {
+		err := s.db.QueryRow("SELECT id FROM pages WHERE url = ?", url).Scan(&id)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get existing page ID after race condition: %w", err)
+		}
+		return id, nil
+	}
+
+	return int(id64), nil
 }

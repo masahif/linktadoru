@@ -85,20 +85,41 @@ SELECT
 FROM pages
 GROUP BY status;
 
--- Links table stores link relationships
-CREATE TABLE IF NOT EXISTS links (
+-- Link relationships table stores normalized link data using page IDs
+-- NOTE: UNIQUE constraint on (source_page_id, target_page_id) ensures no duplicate relationships.
+-- If the same link is found multiple times with different anchor_text or rel_attribute,
+-- only the first occurrence is stored (subsequent duplicates are ignored via INSERT OR IGNORE).
+CREATE TABLE IF NOT EXISTS link_relations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_url TEXT NOT NULL,
-    target_url TEXT NOT NULL,
+    source_page_id INTEGER NOT NULL,
+    target_page_id INTEGER NOT NULL,
     anchor_text TEXT,
     link_type TEXT,
     rel_attribute TEXT,
     crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source_url, target_url)
+    FOREIGN KEY (source_page_id) REFERENCES pages(id),
+    FOREIGN KEY (target_page_id) REFERENCES pages(id),
+    UNIQUE(source_page_id, target_page_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_url);
-CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_url);
+-- Indexes for efficient querying of link relationships
+CREATE INDEX IF NOT EXISTS idx_link_relations_source ON link_relations(source_page_id);
+CREATE INDEX IF NOT EXISTS idx_link_relations_target ON link_relations(target_page_id);
+CREATE INDEX IF NOT EXISTS idx_link_relations_type ON link_relations(link_type);
+
+-- User-friendly view that presents links with URLs (maintains compatibility)
+CREATE VIEW IF NOT EXISTS links AS
+SELECT 
+    lr.id,
+    p1.url AS source_url,
+    p2.url AS target_url,
+    lr.anchor_text,
+    lr.link_type,
+    lr.rel_attribute,
+    lr.crawled_at
+FROM link_relations lr
+JOIN pages p1 ON lr.source_page_id = p1.id
+JOIN pages p2 ON lr.target_page_id = p2.id;
 
 -- Separate errors table for detailed error tracking
 CREATE TABLE IF NOT EXISTS crawl_errors (

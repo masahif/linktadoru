@@ -452,12 +452,14 @@ func TestSQLiteStorage(t *testing.T) {
 				TargetURL:  "https://test.com/page2",
 				LinkType:   "internal",
 				AnchorText: "Link to page 2",
+				CrawledAt:  time.Now(),
 			},
 			{
 				SourceURL:  "https://test.com/page1",
 				TargetURL:  "https://external.com/page",
 				LinkType:   "external",
 				AnchorText: "External link",
+				CrawledAt:  time.Now(),
 			},
 		}
 
@@ -465,6 +467,130 @@ func TestSQLiteStorage(t *testing.T) {
 		err = linkStorage.SaveLinks(links)
 		if err != nil {
 			t.Errorf("Failed to save links: %v", err)
+		}
+
+		// Verify links are accessible through the view
+		rows, err := linkStorage.db.Query("SELECT source_url, target_url, anchor_text, link_type FROM links ORDER BY source_url, target_url")
+		if err != nil {
+			t.Errorf("Failed to query links view: %v", err)
+		}
+		defer rows.Close()
+
+		var savedLinks []struct {
+			SourceURL  string
+			TargetURL  string
+			AnchorText string
+			LinkType   string
+		}
+
+		for rows.Next() {
+			var link struct {
+				SourceURL  string
+				TargetURL  string
+				AnchorText string
+				LinkType   string
+			}
+			err := rows.Scan(&link.SourceURL, &link.TargetURL, &link.AnchorText, &link.LinkType)
+			if err != nil {
+				t.Errorf("Failed to scan link row: %v", err)
+				continue
+			}
+			savedLinks = append(savedLinks, link)
+		}
+
+		if len(savedLinks) != 2 {
+			t.Errorf("Expected 2 links in view, got %d", len(savedLinks))
+		}
+
+		// Verify we have the expected links (order might vary)
+		foundInternal := false
+		foundExternal := false
+		for _, link := range savedLinks {
+			if link.SourceURL == "https://test.com/page1" && link.TargetURL == "https://test.com/page2" && link.LinkType == "internal" {
+				foundInternal = true
+			}
+			if link.SourceURL == "https://test.com/page1" && link.TargetURL == "https://external.com/page" && link.LinkType == "external" {
+				foundExternal = true
+			}
+		}
+		if !foundInternal {
+			t.Errorf("Expected to find internal link from page1 to page2")
+		}
+		if !foundExternal {
+			t.Errorf("Expected to find external link from page1 to external.com")
+		}
+	})
+
+	t.Run("LinkNormalization", func(t *testing.T) {
+		// Test that link normalization works correctly with page IDs
+		normStorage, err := NewSQLiteStorage(":memory:")
+		if err != nil {
+			t.Fatalf("Failed to create normalization storage: %v", err)
+		}
+		defer func() {
+			if err := normStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close normStorage: %v", err)
+			}
+		}()
+
+		// Create links that reference the same URLs multiple times
+		links := []*crawler.LinkData{
+			{
+				SourceURL:  "https://test.com/page1",
+				TargetURL:  "https://test.com/page2",
+				LinkType:   "internal",
+				AnchorText: "First link to page 2",
+				CrawledAt:  time.Now(),
+			},
+			{
+				SourceURL:  "https://test.com/page1",
+				TargetURL:  "https://test.com/page3",
+				LinkType:   "internal",
+				AnchorText: "Link to page 3",
+				CrawledAt:  time.Now(),
+			},
+			{
+				SourceURL:  "https://test.com/page2",
+				TargetURL:  "https://test.com/page1",
+				LinkType:   "internal",
+				AnchorText: "Back to page 1",
+				CrawledAt:  time.Now(),
+			},
+		}
+
+		err = normStorage.SaveLinks(links)
+		if err != nil {
+			t.Errorf("Failed to save normalized links: %v", err)
+		}
+
+		// Check that pages were created correctly (3 unique URLs should create 3 pages)
+		var pageCount int
+		err = normStorage.db.QueryRow("SELECT COUNT(*) FROM pages").Scan(&pageCount)
+		if err != nil {
+			t.Errorf("Failed to count pages: %v", err)
+		}
+		if pageCount != 3 {
+			t.Errorf("Expected 3 pages for 3 unique URLs, got %d", pageCount)
+		}
+
+		// Check that link_relations table has the correct entries
+		var linkCount int
+		err = normStorage.db.QueryRow("SELECT COUNT(*) FROM link_relations").Scan(&linkCount)
+		if err != nil {
+			t.Errorf("Failed to count link relations: %v", err)
+		}
+		if linkCount != 3 {
+			t.Errorf("Expected 3 link relations, got %d", linkCount)
+		}
+
+		// Verify that the links view shows URLs correctly
+		var viewLinkCount int
+		err = normStorage.db.QueryRow("SELECT COUNT(*) FROM links").Scan(&viewLinkCount)
+		if err != nil {
+			t.Errorf("Failed to count links in view: %v", err)
+		}
+		if viewLinkCount != 3 {
+			t.Errorf("Expected 3 links in view, got %d", viewLinkCount)
 		}
 	})
 
