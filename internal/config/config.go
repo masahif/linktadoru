@@ -83,7 +83,7 @@ func DefaultConfig() *CrawlConfig {
 		UserAgent:      "LinkTadoru/1.0",
 		IgnoreRobots:   false,
 		Limit:          0, // unlimited
-		DatabasePath:   "./crawl.db",
+		DatabasePath:   "./linktadoru.db",
 	}
 }
 

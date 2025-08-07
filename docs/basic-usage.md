@@ -128,8 +128,8 @@ WHERE status = 'error';
 
 ```bash
 # Export to CSV
-sqlite3 -header -csv crawl.db "SELECT * FROM pages WHERE status='completed';" > pages.csv
-sqlite3 -header -csv crawl.db "SELECT * FROM links;" > links.csv
+sqlite3 -header -csv linktadoru.db "SELECT * FROM pages WHERE status='completed';" > pages.csv
+sqlite3 -header -csv linktadoru.db "SELECT * FROM links;" > links.csv
 ```
 
 ## Performance Tuning
@@ -169,8 +169,8 @@ user_agent: "PoliteBot/1.0"
 
 ```bash
 # Check queue status while running
-sqlite3 crawl.db "SELECT status, COUNT(*) FROM pages GROUP BY status;"
+sqlite3 linktadoru.db "SELECT status, COUNT(*) FROM pages GROUP BY status;"
 
 # View recent errors
-sqlite3 crawl.db "SELECT url, error_message FROM crawl_errors ORDER BY occurred_at DESC LIMIT 5;"
+sqlite3 linktadoru.db "SELECT url, error_message FROM crawl_errors ORDER BY occurred_at DESC LIMIT 5;"
 ```

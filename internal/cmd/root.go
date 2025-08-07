@@ -88,7 +88,7 @@ func init() {
 	rootCmd.Flags().StringSlice("exclude-patterns", []string{}, "Regex patterns for URLs to exclude")
 
 	// Database flags
-	rootCmd.Flags().StringP("database", "d", "./crawl.db", "Path to SQLite database file")
+	rootCmd.Flags().StringP("database", "d", "./linktadoru.db", "Path to SQLite database file")
 
 	// Bind basic flags to viper
 	bindFlags := []struct {
