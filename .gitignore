@@ -41,6 +41,7 @@ output/
 # Development tools
 .claude/
 .serena/
+CLAUDE.md
 
 # OS specific files
 .DS_Store
