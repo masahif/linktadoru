@@ -321,6 +321,22 @@ func (s *SQLiteStorage) GetQueueStatus() (queued int, processing int, completed 
 	return queued, processing, completed, errors, nil
 }
 
+// HasQueuedItems checks if there are any items available for processing (queued or processing status)
+func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM pages 
+		WHERE status IN ('queued', 'processing')
+	`).Scan(&count)
+	
+	if err != nil {
+		return false, fmt.Errorf("failed to check queued items: %w", err)
+	}
+	
+	return count > 0, nil
+}
+
 // GetProcessingItems returns currently processing items
 func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
 	query := `

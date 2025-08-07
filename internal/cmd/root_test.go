@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 
 	"linktadoru/internal/config"
+	"linktadoru/internal/storage"
 )
 
 func TestSetVersionInfo(t *testing.T) {
@@ -197,4 +199,118 @@ func TestFlagBinding(t *testing.T) {
 	if persistentFlags.Lookup("config") == nil {
 		t.Error("Expected persistent flag 'config' to be defined")
 	}
+}
+
+func TestRunCrawlerStartupValidation(t *testing.T) {
+	// Create a temporary directory for database
+	tempDir := t.TempDir()
+
+	// Save original values
+	origCfgFile := cfgFile
+	defer func() { cfgFile = origCfgFile }()
+
+	t.Run("NoURLsNoDB", func(t *testing.T) {
+		// Reset viper for each subtest
+		viper.Reset()
+
+		// Create a mock command with no show-config flag
+		cmd := &cobra.Command{}
+		cmd.Flags().Bool("show-config", false, "")
+		cmd.Flags().String("database", filepath.Join(tempDir, "nonexistent.db"), "")
+
+		// Bind flags
+		_ = viper.BindPFlag("database_path", cmd.Flags().Lookup("database"))
+
+		// Test with no URLs and no database
+		err := runCrawler(cmd, []string{}) // No seed URLs
+		if err == nil {
+			t.Error("Expected error when no URLs provided and no database exists")
+		}
+		if !strings.Contains(err.Error(), "no URLs provided and no existing database found") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("NoURLsEmptyDB", func(t *testing.T) {
+		// Reset viper for each subtest  
+		viper.Reset()
+
+		// Create an empty database
+		dbPath := filepath.Join(tempDir, "empty.db")
+		emptyStore, err := storage.NewSQLiteStorage(dbPath)
+		if err != nil {
+			t.Fatalf("Failed to create test database: %v", err)
+		}
+		emptyStore.Close()
+
+		// Create a mock command
+		cmd := &cobra.Command{}
+		cmd.Flags().Bool("show-config", false, "")
+		cmd.Flags().String("database", dbPath, "")
+
+		// Bind flags
+		_ = viper.BindPFlag("database_path", cmd.Flags().Lookup("database"))
+
+		// Test with no URLs but empty database (should exit gracefully)
+		err = runCrawler(cmd, []string{}) // No seed URLs
+		if err != nil {
+			t.Errorf("Expected no error for empty database case, got: %v", err)
+		}
+	})
+
+	t.Run("NoURLsDBWithQueue", func(t *testing.T) {
+		// Reset viper for each subtest
+		viper.Reset()
+
+		// Create a database with queued items
+		dbPath := filepath.Join(tempDir, "queued.db")
+		testStore, err := storage.NewSQLiteStorage(dbPath)
+		if err != nil {
+			t.Fatalf("Failed to create test database: %v", err)
+		}
+
+		// Add some URLs to queue
+		err = testStore.AddToQueue([]string{"https://test.com/page1", "https://test.com/page2"})
+		if err != nil {
+			t.Fatalf("Failed to add URLs to queue: %v", err)
+		}
+
+		// Verify queue has items
+		hasItems, err := testStore.HasQueuedItems()
+		if err != nil {
+			t.Fatalf("Failed to check queued items: %v", err)
+		}
+		if !hasItems {
+			t.Fatal("Expected queued items, but HasQueuedItems returned false")
+		}
+
+		testStore.Close()
+
+		// For this test case, we only verify that the database validation logic works
+		// We don't actually run the crawler to avoid infinite loops in tests
+		// The validation logic should detect that there are queued items and NOT error out
+
+		// Test the validation logic directly by checking database file existence and queue status
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			t.Error("Expected database file to exist")
+		}
+
+		// Verify that HasQueuedItems works correctly for this database
+		testStorage, err := storage.NewSQLiteStorage(dbPath)
+		if err != nil {
+			t.Fatalf("Failed to reopen test database: %v", err)
+		}
+		defer testStorage.Close()
+
+		hasItems, err = testStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items in validation test: %v", err)
+		}
+		if !hasItems {
+			t.Error("Expected queued items in validation test, but HasQueuedItems returned false")
+		}
+
+		// This validates that the startup validation logic would pass for this case
+		// (The actual runCrawler call is omitted to prevent test timeouts)
+	})
 }

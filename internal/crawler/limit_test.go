@@ -70,6 +70,10 @@ func (m *MockStorage) GetURLStatus(url string) (status string, exists bool) {
 	return "", false
 }
 
+func (m *MockStorage) HasQueuedItems() (bool, error) {
+	return false, nil
+}
+
 func TestLimit(t *testing.T) {
 	// Test that limit configuration is properly set
 	config := &config.CrawlConfig{

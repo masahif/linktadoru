@@ -527,4 +527,97 @@ func TestSQLiteStorage(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("HasQueuedItems", func(t *testing.T) {
+		// Test HasQueuedItems function
+		queueStorage, err := NewSQLiteStorage(":memory:")
+		if err != nil {
+			t.Fatalf("Failed to create queue storage: %v", err)
+		}
+		defer func() {
+			if err := queueStorage.Close(); err != nil {
+				t.Logf("Warning: failed to close queueStorage: %v", err)
+			}
+		}()
+
+		// Initially should have no queued items
+		hasItems, err := queueStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items: %v", err)
+		}
+		if hasItems {
+			t.Errorf("Expected no queued items, but HasQueuedItems returned true")
+		}
+
+		// Add URLs to queue
+		testURLs := []string{"https://queue.test/page1", "https://queue.test/page2"}
+		err = queueStorage.AddToQueue(testURLs)
+		if err != nil {
+			t.Errorf("Failed to add URLs to queue: %v", err)
+		}
+
+		// Should now have queued items
+		hasItems, err = queueStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items: %v", err)
+		}
+		if !hasItems {
+			t.Errorf("Expected queued items, but HasQueuedItems returned false")
+		}
+
+		// Get one item (moves to processing)
+		item, err := queueStorage.GetNextFromQueue()
+		if err != nil {
+			t.Errorf("Failed to get next item: %v", err)
+		}
+		if item == nil {
+			t.Errorf("Expected item from queue, got nil")
+			return
+		}
+
+		// Should still have items (one processing, one queued)
+		hasItems, err = queueStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items: %v", err)
+		}
+		if !hasItems {
+			t.Errorf("Expected queued items (processing + queued), but HasQueuedItems returned false")
+		}
+
+		// Complete the processing item
+		err = queueStorage.UpdatePageStatus(item.ID, "completed")
+		if err != nil {
+			t.Errorf("Failed to complete item: %v", err)
+		}
+
+		// Should still have one queued item
+		hasItems, err = queueStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items: %v", err)
+		}
+		if !hasItems {
+			t.Errorf("Expected one queued item remaining, but HasQueuedItems returned false")
+		}
+
+		// Get and complete the remaining item
+		remainingItem, err := queueStorage.GetNextFromQueue()
+		if err != nil {
+			t.Errorf("Failed to get remaining item: %v", err)
+		}
+		if remainingItem != nil {
+			err = queueStorage.UpdatePageStatus(remainingItem.ID, "completed")
+			if err != nil {
+				t.Errorf("Failed to complete remaining item: %v", err)
+			}
+		}
+
+		// Should now have no queued items
+		hasItems, err = queueStorage.HasQueuedItems()
+		if err != nil {
+			t.Errorf("Failed to check queued items: %v", err)
+		}
+		if hasItems {
+			t.Errorf("Expected no queued items after completion, but HasQueuedItems returned true")
+		}
+	})
 }
