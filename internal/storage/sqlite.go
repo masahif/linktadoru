@@ -25,9 +25,9 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(5)
-	db.SetMaxIdleConns(5)
+	// Configure connection pool - single connection prevents lock conflicts
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(30 * time.Minute)
 
 	storage := &SQLiteStorage{db: db}
@@ -50,6 +50,8 @@ func (s *SQLiteStorage) InitSchema() error {
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA cache_size = -64000", // 64MB cache
 		"PRAGMA temp_store = MEMORY",
+		"PRAGMA busy_timeout = 30000",  // 30 second timeout for locks
+		"PRAGMA locking_mode = NORMAL", // Allow external monitoring processes
 	}
 
 	for _, pragma := range pragmas {

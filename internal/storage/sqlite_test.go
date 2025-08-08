@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -798,4 +800,271 @@ func testHasQueuedItems(t *testing.T) {
 	if hasItems {
 		t.Errorf("Expected no queued items after completion, but HasQueuedItems returned true")
 	}
+}
+
+// TestConcurrentOperations tests database operations under concurrent access
+func TestConcurrentOperations(t *testing.T) {
+	// Create a temporary database for the concurrency test
+	tempDir := t.TempDir()
+	dbFile := filepath.Join(tempDir, "test_concurrent.db")
+
+	storage, err := NewSQLiteStorage(dbFile)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() {
+		if err := storage.Close(); err != nil {
+			t.Logf("Warning: failed to close storage: %v", err)
+		}
+	}()
+
+	t.Run("ConcurrentSavePageResults", func(t *testing.T) {
+		testConcurrentSavePageResults(t, storage)
+	})
+
+	t.Run("ConcurrentSaveLinks", func(t *testing.T) {
+		testConcurrentSaveLinks(t, storage)
+	})
+
+	t.Run("ConcurrentQueueOperations", func(t *testing.T) {
+		testConcurrentQueueOperations(t, storage)
+	})
+}
+
+func testConcurrentSavePageResults(t *testing.T, storage *SQLiteStorage) {
+	const numWorkers = 5
+	const itemsPerWorker = 10
+
+	// Add items to queue first
+	var urls []string
+	for i := 0; i < numWorkers*itemsPerWorker; i++ {
+		urls = append(urls, fmt.Sprintf("https://concurrent.test/page%d", i))
+	}
+
+	err := storage.AddToQueue(urls)
+	if err != nil {
+		t.Fatalf("Failed to add URLs to queue: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errorChan := make(chan error, numWorkers*itemsPerWorker)
+
+	// Start concurrent workers
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for i := 0; i < itemsPerWorker; i++ {
+				// Get an item from queue
+				item, err := storage.GetNextFromQueue()
+				if err != nil {
+					errorChan <- fmt.Errorf("worker %d: failed to get item %d: %v", workerID, i, err)
+					continue
+				}
+				if item == nil {
+					// No more items
+					break
+				}
+
+				// Create sample page data
+				pageData := &crawler.PageData{
+					URL:          item.URL,
+					StatusCode:   200,
+					Title:        fmt.Sprintf("Page %d from Worker %d", i, workerID),
+					MetaDesc:     "Test description",
+					ContentHash:  fmt.Sprintf("hash-%d-%d", workerID, i),
+					TTFB:         time.Duration(100) * time.Millisecond,
+					DownloadTime: time.Duration(500) * time.Millisecond,
+					ResponseSize: 1024,
+					HTTPHeaders:  map[string]string{"content-type": "text/html"},
+					CrawledAt:    time.Now(),
+				}
+
+				// Save page result (this should use retry logic)
+				if err := storage.SavePageResult(item.ID, pageData); err != nil {
+					errorChan <- fmt.Errorf("worker %d: failed to save page result for item %d: %v", workerID, i, err)
+				}
+			}
+		}(w)
+	}
+
+	wg.Wait()
+	close(errorChan)
+
+	// Check for errors
+	var errors []error
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			t.Errorf("Concurrent error: %v", err)
+		}
+	}
+
+	// Verify final state
+	_, _, completed, errorCount, err := storage.GetQueueStatus()
+	if err != nil {
+		t.Errorf("Failed to get final queue status: %v", err)
+	}
+
+	t.Logf("Final status: completed=%d, errors=%d", completed, errorCount)
+}
+
+func testConcurrentSaveLinks(t *testing.T, storage *SQLiteStorage) {
+	const numWorkers = 3
+	const linksPerWorker = 20
+
+	var wg sync.WaitGroup
+	errorChan := make(chan error, numWorkers*linksPerWorker)
+
+	// Start concurrent workers saving links
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for batch := 0; batch < 5; batch++ {
+				var links []*crawler.LinkData
+				for i := 0; i < linksPerWorker/5; i++ {
+					linkIndex := batch*linksPerWorker/5 + i
+					link := &crawler.LinkData{
+						SourceURL:  fmt.Sprintf("https://concurrent.test/worker%d/page%d", workerID, linkIndex),
+						TargetURL:  fmt.Sprintf("https://concurrent.test/worker%d/target%d", workerID, linkIndex),
+						LinkType:   "internal",
+						AnchorText: fmt.Sprintf("Link from worker %d, item %d", workerID, linkIndex),
+						CrawledAt:  time.Now(),
+					}
+					links = append(links, link)
+				}
+
+				// Save links batch (this should use retry logic)
+				if err := storage.SaveLinks(links); err != nil {
+					errorChan <- fmt.Errorf("worker %d batch %d: failed to save links: %v", workerID, batch, err)
+				}
+			}
+		}(w)
+	}
+
+	wg.Wait()
+	close(errorChan)
+
+	// Check for errors
+	var errors []error
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			t.Errorf("Concurrent link save error: %v", err)
+		}
+	}
+
+	// Verify links were saved
+	var linkCount int
+	err := storage.db.QueryRow("SELECT COUNT(*) FROM link_relations").Scan(&linkCount)
+	if err != nil {
+		t.Errorf("Failed to count saved links: %v", err)
+	}
+
+	expectedLinks := numWorkers * linksPerWorker
+	if linkCount != expectedLinks {
+		t.Errorf("Expected %d links, got %d", expectedLinks, linkCount)
+	}
+
+	t.Logf("Successfully saved %d links concurrently", linkCount)
+}
+
+func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
+	const numWorkers = 5
+	const itemsPerWorker = 10
+
+	// First, add items to the queue
+	var urls []string
+	for i := 0; i < numWorkers*itemsPerWorker; i++ {
+		urls = append(urls, fmt.Sprintf("https://queue-concurrent.test/item%d", i))
+	}
+
+	err := storage.AddToQueue(urls)
+	if err != nil {
+		t.Fatalf("Failed to add URLs for concurrent queue test: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	processed := make(chan string, numWorkers*itemsPerWorker)
+	errorChan := make(chan error, numWorkers*itemsPerWorker)
+
+	// Start workers that compete for queue items
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for {
+				// Get next item from queue
+				item, err := storage.GetNextFromQueue()
+				if err != nil {
+					errorChan <- fmt.Errorf("worker %d: failed to get from queue: %v", workerID, err)
+					break
+				}
+				if item == nil {
+					// No more items
+					break
+				}
+
+				// Simulate some processing time
+				time.Sleep(time.Millisecond * 10)
+
+				// Mark as completed
+				if err := storage.UpdatePageStatus(item.ID, "completed"); err != nil {
+					errorChan <- fmt.Errorf("worker %d: failed to update status for %s: %v", workerID, item.URL, err)
+				} else {
+					processed <- item.URL
+				}
+			}
+		}(w)
+	}
+
+	wg.Wait()
+	close(processed)
+	close(errorChan)
+
+	// Check for errors
+	var errors []error
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			t.Errorf("Concurrent queue error: %v", err)
+		}
+	}
+
+	// Count processed items
+	var processedCount int
+	for range processed {
+		processedCount++
+	}
+
+	expectedProcessed := numWorkers * itemsPerWorker
+	if processedCount != expectedProcessed {
+		t.Errorf("Expected %d processed items, got %d", expectedProcessed, processedCount)
+	}
+
+	// Verify final queue state
+	queued, processing, completed, _, err := storage.GetQueueStatus()
+	if err != nil {
+		t.Errorf("Failed to get final queue status: %v", err)
+	}
+
+	if processing > 0 {
+		t.Errorf("Expected no processing items after completion, got %d", processing)
+	}
+
+	t.Logf("Concurrent queue test completed: queued=%d, processing=%d, completed=%d, processed=%d",
+		queued, processing, completed, processedCount)
 }
