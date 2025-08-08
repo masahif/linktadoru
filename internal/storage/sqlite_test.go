@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -804,29 +805,47 @@ func testHasQueuedItems(t *testing.T) {
 
 // TestConcurrentOperations tests database operations under concurrent access
 func TestConcurrentOperations(t *testing.T) {
-	// Create a temporary database for the concurrency test
 	tempDir := t.TempDir()
-	dbFile := filepath.Join(tempDir, "test_concurrent.db")
-
-	storage, err := NewSQLiteStorage(dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create storage: %v", err)
-	}
-	defer func() {
-		if err := storage.Close(); err != nil {
-			t.Logf("Warning: failed to close storage: %v", err)
-		}
-	}()
 
 	t.Run("ConcurrentSavePageResults", func(t *testing.T) {
+		dbFile := filepath.Join(tempDir, "test_concurrent_save_page.db")
+		storage, err := NewSQLiteStorage(dbFile)
+		if err != nil {
+			t.Fatalf("Failed to create storage: %v", err)
+		}
+		defer func() {
+			if err := storage.Close(); err != nil {
+				t.Logf("Warning: failed to close storage: %v", err)
+			}
+		}()
 		testConcurrentSavePageResults(t, storage)
 	})
 
 	t.Run("ConcurrentSaveLinks", func(t *testing.T) {
+		dbFile := filepath.Join(tempDir, "test_concurrent_save_links.db")
+		storage, err := NewSQLiteStorage(dbFile)
+		if err != nil {
+			t.Fatalf("Failed to create storage: %v", err)
+		}
+		defer func() {
+			if err := storage.Close(); err != nil {
+				t.Logf("Warning: failed to close storage: %v", err)
+			}
+		}()
 		testConcurrentSaveLinks(t, storage)
 	})
 
 	t.Run("ConcurrentQueueOperations", func(t *testing.T) {
+		dbFile := filepath.Join(tempDir, "test_concurrent_queue.db")
+		storage, err := NewSQLiteStorage(dbFile)
+		if err != nil {
+			t.Fatalf("Failed to create storage: %v", err)
+		}
+		defer func() {
+			if err := storage.Close(); err != nil {
+				t.Logf("Warning: failed to close storage: %v", err)
+			}
+		}()
 		testConcurrentQueueOperations(t, storage)
 	})
 }
@@ -994,8 +1013,8 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 	}
 
 	var wg sync.WaitGroup
-	processed := make(chan string, numWorkers*itemsPerWorker)
-	errorChan := make(chan error, numWorkers*itemsPerWorker)
+	processedCount := int64(0)
+	errorCount := int64(0)
 
 	// Start workers that compete for queue items
 	for w := 0; w < numWorkers; w++ {
@@ -1007,7 +1026,8 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 				// Get next item from queue
 				item, err := storage.GetNextFromQueue()
 				if err != nil {
-					errorChan <- fmt.Errorf("worker %d: failed to get from queue: %v", workerID, err)
+					t.Errorf("Worker %d: failed to get from queue: %v", workerID, err)
+					atomic.AddInt64(&errorCount, 1)
 					break
 				}
 				if item == nil {
@@ -1020,39 +1040,27 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 
 				// Mark as completed
 				if err := storage.UpdatePageStatus(item.ID, "completed"); err != nil {
-					errorChan <- fmt.Errorf("worker %d: failed to update status for %s: %v", workerID, item.URL, err)
+					t.Errorf("Worker %d: failed to update status for %s: %v", workerID, item.URL, err)
+					atomic.AddInt64(&errorCount, 1)
 				} else {
-					processed <- item.URL
+					atomic.AddInt64(&processedCount, 1)
 				}
 			}
 		}(w)
 	}
 
 	wg.Wait()
-	close(processed)
-	close(errorChan)
 
-	// Check for errors
-	var errors []error
-	for err := range errorChan {
-		errors = append(errors, err)
+	finalProcessedCount := atomic.LoadInt64(&processedCount)
+	finalErrorCount := atomic.LoadInt64(&errorCount)
+
+	expectedProcessed := int64(numWorkers * itemsPerWorker)
+	if finalProcessedCount != expectedProcessed {
+		t.Errorf("Expected %d processed items, got %d", expectedProcessed, finalProcessedCount)
 	}
 
-	if len(errors) > 0 {
-		for _, err := range errors {
-			t.Errorf("Concurrent queue error: %v", err)
-		}
-	}
-
-	// Count processed items
-	var processedCount int
-	for range processed {
-		processedCount++
-	}
-
-	expectedProcessed := numWorkers * itemsPerWorker
-	if processedCount != expectedProcessed {
-		t.Errorf("Expected %d processed items, got %d", expectedProcessed, processedCount)
+	if finalErrorCount > 0 {
+		t.Errorf("Encountered %d errors during processing", finalErrorCount)
 	}
 
 	// Verify final queue state
@@ -1066,5 +1074,5 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 	}
 
 	t.Logf("Concurrent queue test completed: queued=%d, processing=%d, completed=%d, processed=%d",
-		queued, processing, completed, processedCount)
+		queued, processing, completed, finalProcessedCount)
 }
