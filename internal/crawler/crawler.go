@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ type DefaultCrawler struct {
 	processor    PageProcessor
 	rateLimiter  *RateLimiter
 	robotsParser *RobotsParser
+	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
 
 	// State
 	stats         CrawlStats
@@ -96,6 +98,25 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
 	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobots)
 
+	// Extract allowed hosts from seed URLs for same-host filtering
+	allowedHosts := make([]string, 0, len(config.SeedURLs))
+	for _, seedURL := range config.SeedURLs {
+		if parsedURL, err := url.Parse(seedURL); err == nil {
+			host := parsedURL.Scheme + "://" + parsedURL.Host
+			// Avoid duplicates
+			found := false
+			for _, existing := range allowedHosts {
+				if existing == host {
+					found = true
+					break
+				}
+			}
+			if !found {
+				allowedHosts = append(allowedHosts, host)
+			}
+		}
+	}
+
 	crawler := &DefaultCrawler{
 		config:       config,
 		storage:      storage,
@@ -103,12 +124,37 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 		processor:    processor,
 		rateLimiter:  rateLimiter,
 		robotsParser: robotsParser,
+		allowedHosts: allowedHosts,
 		stats: CrawlStats{
 			StartTime: time.Now(),
 		},
 	}
 
 	return crawler, nil
+}
+
+// isAllowedHost checks if the given URL's host is allowed for crawling
+func (c *DefaultCrawler) isAllowedHost(targetURL string) bool {
+	// If external hosts are allowed, accept any host
+	if c.config.FollowExternalHosts {
+		return true
+	}
+
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return false
+	}
+
+	targetHost := parsedURL.Scheme + "://" + parsedURL.Host
+
+	// Check if the target host matches any of the allowed hosts
+	for _, allowedHost := range c.allowedHosts {
+		if targetHost == allowedHost {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Start starts the crawling process
@@ -412,6 +458,11 @@ func (c *DefaultCrawler) statsReporter() {
 
 // shouldCrawlURL determines if a URL should be crawled based on include/exclude patterns
 func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
+	// First check if the host is allowed for crawling
+	if !c.isAllowedHost(urlStr) {
+		return false
+	}
+
 	// If include patterns are specified, URL must match at least one
 	if len(c.config.IncludePatterns) > 0 {
 		matched := false
