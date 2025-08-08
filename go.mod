@@ -1,4 +1,4 @@
-module linktadoru
+module github.com/masahif/linktadoru
 
 go 1.23.0
 

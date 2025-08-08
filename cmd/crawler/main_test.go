@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"linktadoru/internal/cmd"
+	"github.com/masahif/linktadoru/internal/cmd"
 )
 
 func TestVersionVariables(t *testing.T) {

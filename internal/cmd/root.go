@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
-	"linktadoru/internal/config"
-	"linktadoru/internal/crawler"
-	"linktadoru/internal/storage"
+	"github.com/masahif/linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/crawler"
+	"github.com/masahif/linktadoru/internal/storage"
 )
 
 var (
@@ -221,17 +221,17 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	if len(cfg.SeedURLs) == 0 {
 		// No seed URLs provided, check if database exists for resume
 		if _, err := os.Stat(cfg.DatabasePath); os.IsNotExist(err) {
-			return fmt.Errorf("no URLs provided and no existing database found at %s\nUsage: %s [URLs...] or ensure database exists for resume operation", 
+			return fmt.Errorf("no URLs provided and no existing database found at %s\nUsage: %s [URLs...] or ensure database exists for resume operation",
 				cfg.DatabasePath, os.Args[0])
 		}
-		
+
 		// Database exists, but let's check if it has any queued items
 		// Create a temporary storage instance to check queue status
 		tempStorage, err := storage.NewSQLiteStorage(cfg.DatabasePath)
 		if err != nil {
 			return fmt.Errorf("failed to open database %s: %w", cfg.DatabasePath, err)
 		}
-		
+
 		// Check if queue has any items (queued or processing)
 		hasWork, err := tempStorage.HasQueuedItems()
 		if err != nil {
@@ -243,13 +243,13 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		if closeErr := tempStorage.Close(); closeErr != nil {
 			return fmt.Errorf("failed to close temporary storage: %w", closeErr)
 		}
-		
+
 		if !hasWork {
 			fmt.Printf("No URLs provided and no queued items found in database %s\n", cfg.DatabasePath)
 			fmt.Printf("Nothing to crawl. Exiting.\n")
 			return nil
 		}
-		
+
 		fmt.Printf("Resuming crawl from existing database: %s\n", cfg.DatabasePath)
 	}
 

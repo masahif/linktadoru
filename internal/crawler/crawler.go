@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // DefaultCrawler implements the Crawler interface

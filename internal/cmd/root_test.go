@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"linktadoru/internal/config"
-	"linktadoru/internal/storage"
+	"github.com/masahif/linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/storage"
 )
 
 func TestSetVersionInfo(t *testing.T) {
@@ -232,7 +232,7 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 	})
 
 	t.Run("NoURLsEmptyDB", func(t *testing.T) {
-		// Reset viper for each subtest  
+		// Reset viper for each subtest
 		viper.Reset()
 
 		// Create an empty database

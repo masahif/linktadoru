@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"linktadoru/internal/parser"
+	"github.com/masahif/linktadoru/internal/parser"
 )
 
 // DefaultPageProcessor implements the PageProcessor interface
