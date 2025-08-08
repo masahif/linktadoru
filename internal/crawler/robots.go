@@ -15,7 +15,7 @@ type RobotsParser struct {
 	httpClient   *HTTPClient
 	rules        map[string]*RobotRules
 	mu           sync.RWMutex
-	ignoreRobots bool
+	ignoreRobotsTxt bool
 }
 
 // RobotRules contains the parsed rules for a domain
@@ -27,17 +27,17 @@ type RobotRules struct {
 }
 
 // NewRobotsParser creates a new robots.txt parser
-func NewRobotsParser(httpClient *HTTPClient, ignoreRobots bool) *RobotsParser {
+func NewRobotsParser(httpClient *HTTPClient, ignoreRobotsTxt bool) *RobotsParser {
 	return &RobotsParser{
 		httpClient:   httpClient,
 		rules:        make(map[string]*RobotRules),
-		ignoreRobots: ignoreRobots,
+		ignoreRobotsTxt: ignoreRobotsTxt,
 	}
 }
 
 // IsAllowed checks if a URL is allowed by robots.txt
 func (r *RobotsParser) IsAllowed(ctx context.Context, urlStr string, userAgent string) (bool, error) {
-	if r.ignoreRobots {
+	if r.ignoreRobotsTxt {
 		return true, nil
 	}
 

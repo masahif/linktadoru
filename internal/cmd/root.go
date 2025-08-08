@@ -63,7 +63,7 @@ func init() {
 	rootCmd.Flags().Float64P("delay", "r", 0.1, "Delay between requests in seconds")
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "HTTP request timeout")
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
-	rootCmd.Flags().Bool("ignore-robots", false, "Ignore robots.txt rules")
+	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
 
@@ -100,7 +100,7 @@ func init() {
 		{"request_delay", "delay"},
 		{"request_timeout", "timeout"},
 		{"user_agent", "user-agent"},
-		{"ignore_robots", "ignore-robots"},
+		{"ignore_robots_txt", "ignore-robots-txt"},
 		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
 		{"include_patterns", "include-patterns"},
@@ -271,7 +271,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Concurrency: %d\n", cfg.Concurrency)
 	fmt.Printf("  Request Delay: %v\n", cfg.RequestDelay)
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)
-	fmt.Printf("  Ignore Robots: %t\n", cfg.IgnoreRobots)
+	fmt.Printf("  Ignore Robots.txt: %t\n", cfg.IgnoreRobotsTxt)
 
 	// Display auth status without exposing credentials
 	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {

@@ -36,7 +36,7 @@ func TestStartStop(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	// Use in-memory storage for testing
@@ -88,7 +88,7 @@ func TestStartWithRealStorage(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	// Create enhanced mock storage that tracks calls
@@ -185,7 +185,7 @@ func TestWorkerErrorHandling(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 1 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	crawler, err := NewCrawler(config, store)
@@ -227,7 +227,7 @@ func TestStatsReporter(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	store := &MockStorage{}
@@ -275,7 +275,7 @@ func TestMultipleWorkers(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	store := &EnhancedMockStorage{}
@@ -307,7 +307,7 @@ func TestLimitReached(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	// Mock storage that provides items
@@ -386,7 +386,7 @@ func TestSameHostFiltering(t *testing.T) {
 		RequestDelay:        0.01, // 10ms in seconds
 		RequestTimeout:      2 * time.Second,
 		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobots:        true,
+		IgnoreRobotsTxt:        true,
 		FollowExternalHosts: false, // Default - same host only
 	}
 
@@ -435,7 +435,7 @@ func TestExternalHostsEnabled(t *testing.T) {
 		RequestDelay:        0.01, // 10ms in seconds
 		RequestTimeout:      2 * time.Second,
 		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobots:        true,
+		IgnoreRobotsTxt:        true,
 		FollowExternalHosts: true, // Enable external hosts
 	}
 
