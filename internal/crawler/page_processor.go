@@ -2,7 +2,7 @@ package crawler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -70,7 +70,7 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 
 	// Only parse HTML content
 	if !isHTML || resp.StatusCode >= 400 {
-		log.Printf("Skipping HTML parsing for %s: isHTML=%v, statusCode=%d", url, isHTML, resp.StatusCode)
+		slog.Debug("Skipping HTML parsing", "url", url, "is_html", isHTML, "status_code", resp.StatusCode)
 		return result, nil
 	}
 
@@ -93,7 +93,7 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 	pageData.ContentHash = parseResult.ContentHash
 
 	// Convert parsed links to LinkData
-	log.Printf("Found %d links in %s", len(parseResult.Links), url)
+	slog.Debug("Found links", "url", url, "links_count", len(parseResult.Links))
 	for _, link := range parseResult.Links {
 		linkType := "internal"
 		if link.IsExternal {
@@ -110,7 +110,7 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 		}
 
 		result.Links = append(result.Links, linkData)
-		log.Printf("Added link: %s -> %s (%s)", resp.FinalURL, link.URL, linkType)
+		slog.Debug("Added link", "source", resp.FinalURL, "target", link.URL, "type", linkType)
 	}
 
 	return result, nil
