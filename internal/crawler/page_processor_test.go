@@ -2,11 +2,19 @@ package crawler
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func init() {
+	// Disable slog output during testing
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	slog.SetDefault(logger)
+}
 
 func TestPageProcessor(t *testing.T) {
 	// Create test server

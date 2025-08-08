@@ -6,7 +6,7 @@ package crawler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 	"strings"
 	"sync"
@@ -69,7 +69,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 			colonIndex := strings.Index(header, ":")
 			if colonIndex <= 0 {
 				// Skip invalid headers - validation should have caught this
-				log.Printf("Warning: skipping invalid header format: %s", header)
+				slog.Warn("Skipping invalid header format", "header", header)
 				continue
 			}
 
@@ -78,7 +78,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 			if key == "" || value == "" {
 				// Skip empty key or value
-				log.Printf("Warning: skipping header with empty key or value: %s", header)
+				slog.Warn("Skipping header with empty key or value", "header", header)
 				continue
 			}
 
@@ -87,7 +87,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 		if len(headerMap) > 0 {
 			httpClient.SetCustomHeaders(headerMap)
-			log.Printf("Set %d custom headers", len(headerMap))
+			slog.Info("Set custom headers", "count", len(headerMap))
 		}
 	}
 
@@ -122,7 +122,7 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	defer c.cancel()
 
 	if len(seedURLs) > 0 {
-		log.Printf("Starting crawler with %d seed URLs", len(seedURLs))
+		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
 		// Step 1: Add seed URLs to queue first (before starting workers)
 		var urls []string
@@ -137,9 +137,9 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
 		}
-		log.Printf("Added %d seed URLs to queue", len(urls))
+		slog.Info("Added seed URLs to queue", "count", len(urls))
 	} else {
-		log.Printf("Starting crawler - resuming from existing queue")
+		slog.Info("Starting crawler - resuming from existing queue")
 	}
 
 	// Step 2: Start workers after queue is populated
@@ -162,9 +162,9 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 
 	select {
 	case <-done:
-		log.Println("Crawling completed")
+		slog.Info("Crawling completed")
 	case <-c.ctx.Done():
-		log.Println("Crawling cancelled")
+		slog.Info("Crawling cancelled")
 	}
 
 	return nil
@@ -204,10 +204,10 @@ func (c *DefaultCrawler) worker(id int) {
 			c.cancel()
 		}
 		c.workersMutex.Unlock()
-		log.Printf("Worker %d stopped", id)
+		slog.Debug("Worker stopped", "worker_id", id)
 	}()
 
-	log.Printf("Worker %d started", id)
+	slog.Debug("Worker started", "worker_id", id)
 
 	for {
 		select {
@@ -218,7 +218,7 @@ func (c *DefaultCrawler) worker(id int) {
 			c.statsMutex.RLock()
 			if c.config.Limit > 0 && c.stats.PagesCrawled >= c.config.Limit {
 				c.statsMutex.RUnlock()
-				log.Printf("Worker %d: reached limit", id)
+				slog.Info("Worker reached limit", "worker_id", id)
 				return
 			}
 			c.statsMutex.RUnlock()
@@ -226,7 +226,7 @@ func (c *DefaultCrawler) worker(id int) {
 			// Get next item from queue
 			item, err := c.storage.GetNextFromQueue()
 			if err != nil {
-				log.Printf("Worker %d: failed to get from queue: %v", id, err)
+				slog.Error("Worker failed to get from queue", "worker_id", id, "error", err)
 				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 				continue
 			}
@@ -239,7 +239,7 @@ func (c *DefaultCrawler) worker(id int) {
 
 				if crawled > 0 {
 					// We've processed at least one page and queue is empty
-					log.Printf("Worker %d: no more items in queue, exiting", id)
+					slog.Debug("Worker no more items in queue, exiting", "worker_id", id)
 					return
 				}
 
@@ -252,13 +252,13 @@ func (c *DefaultCrawler) worker(id int) {
 			if !c.config.IgnoreRobots {
 				allowed, err := c.robotsParser.IsAllowed(c.ctx, item.URL, c.config.UserAgent)
 				if err != nil {
-					log.Printf("Worker %d: robots.txt check failed for %s: %v", id, item.URL, err)
+					slog.Warn("Worker robots.txt check failed", "worker_id", id, "url", item.URL, "error", err)
 				}
 				if !allowed {
-					log.Printf("Worker %d: %s disallowed by robots.txt", id, item.URL)
+					slog.Info("URL disallowed by robots.txt", "worker_id", id, "url", item.URL)
 					// Mark as error and continue
 					if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
-						log.Printf("Worker %d: failed to save robots error: %v", id, err)
+						slog.Error("Worker failed to save robots error", "worker_id", id, "error", err)
 					}
 					time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
 					continue
@@ -267,17 +267,17 @@ func (c *DefaultCrawler) worker(id int) {
 
 			// Rate limiting
 			if err := c.rateLimiter.Wait(c.ctx, item.URL); err != nil {
-				log.Printf("Worker %d: rate limiting error: %v", id, err)
+				slog.Error("Worker rate limiting error", "worker_id", id, "error", err)
 				continue
 			}
 
 			// Process the page
 			result, err := c.processor.Process(c.ctx, item.URL)
 			if err != nil {
-				log.Printf("Worker %d: failed to process %s: %v", id, item.URL, err)
+				slog.Error("Worker failed to process URL", "worker_id", id, "url", item.URL, "error", err)
 				// Save page error
 				if saveErr := c.storage.SavePageError(item.ID, "processing_error", err.Error()); saveErr != nil {
-					log.Printf("Worker %d: failed to save processing error: %v", id, saveErr)
+					slog.Error("Worker failed to save processing error", "worker_id", id, "error", saveErr)
 				}
 				c.incrementErrorCount()
 				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
@@ -287,7 +287,7 @@ func (c *DefaultCrawler) worker(id int) {
 			// Save page result
 			if result.Page != nil {
 				if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
-					log.Printf("Worker %d: failed to save page %s: %v", id, item.URL, err)
+					slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
 				} else {
 					c.incrementCrawledCount()
 				}
@@ -295,7 +295,7 @@ func (c *DefaultCrawler) worker(id int) {
 
 			// Save all links in batch (much faster than individual saves)
 			if err := c.storage.SaveLinks(result.Links); err != nil {
-				log.Printf("Worker %d: failed to save links for %s: %v", id, item.URL, err)
+				slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
 			}
 
 			// Collect new URLs to queue
@@ -316,23 +316,21 @@ func (c *DefaultCrawler) worker(id int) {
 			// Add new URLs to queue in batch
 			if len(newURLs) > 0 {
 				if err := c.storage.AddToQueue(newURLs); err != nil {
-					log.Printf("Worker %d: failed to add URLs to queue: %v", id, err)
+					slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
 				}
 			}
 
 			// Save error if any (separate from page processing errors)
 			if result.Error != nil {
 				if err := c.storage.SaveError(result.Error); err != nil {
-					log.Printf("Worker %d: failed to save error for %s: %v", id, item.URL, err)
+					slog.Error("Worker failed to save error", "worker_id", id, "url", item.URL, "error", err)
 				}
 			}
 
 			if result.Page != nil {
-				log.Printf("Worker %d: processed %s (status: %d, links: %d)",
-					id, item.URL, result.Page.StatusCode, len(result.Links))
+				slog.Info("Worker processed URL", "worker_id", id, "url", item.URL, "status", result.Page.StatusCode, "links", len(result.Links))
 			} else {
-				log.Printf("Worker %d: processed %s (failed, links: %d)",
-					id, item.URL, len(result.Links))
+				slog.Info("Worker processed URL (failed)", "worker_id", id, "url", item.URL, "links", len(result.Links))
 			}
 
 			// Delay after processing to allow other workers to coordinate
@@ -356,13 +354,12 @@ func (c *DefaultCrawler) statsReporter() {
 			// Get real-time queue status from database
 			queued, processing, completed, errors, err := c.storage.GetQueueStatus()
 			if err != nil {
-				log.Printf("Failed to get queue status: %v", err)
+				slog.Error("Failed to get queue status", "error", err)
 				continue
 			}
 
 			stats := c.GetStats()
-			log.Printf("Stats: Crawled=%d, Queued=%d, Processing=%d, Completed=%d, Errors=%d, Duration=%v",
-				stats.PagesCrawled, queued, processing, completed, errors, stats.Duration)
+			slog.Info("Crawling stats", "crawled", stats.PagesCrawled, "queued", queued, "processing", processing, "completed", completed, "errors", errors, "duration", stats.Duration)
 		}
 	}
 }

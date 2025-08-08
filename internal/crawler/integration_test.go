@@ -2,6 +2,8 @@ package crawler
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -10,6 +12,12 @@ import (
 
 	"github.com/masahif/linktadoru/internal/config"
 )
+
+func init() {
+	// Disable slog output during testing
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	slog.SetDefault(logger)
+}
 
 // TestStartStop tests the Start and Stop methods
 func TestStartStop(t *testing.T) {
