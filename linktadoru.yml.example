@@ -7,6 +7,7 @@ request_delay: 0.1           # Delay between requests in seconds (default: 0.1, 
 request_timeout: 30.0        # HTTP request timeout in seconds
 user_agent: "LinkTadoru/1.0"       # User-Agent header (version will be dynamically set if not specified)
 ignore_robots: false        # Whether to ignore robots.txt rules (default: respect robots.txt)
+follow_external_hosts: false # Whether to crawl external hosts (default: same-host only for safety)
 limit: 0                    # Stop after N pages (0 = unlimited)
 
 # Database configuration
@@ -85,3 +86,7 @@ headers:
 #   - "/login"
 #   - "/admin"
 #   - "\\.pdf$"
+
+# Cross-site crawling (follow external links):
+# follow_external_hosts: true
+# limit: 100  # Recommended when crawling multiple sites

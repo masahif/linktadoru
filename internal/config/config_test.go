@@ -30,6 +30,10 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected ignore robots false, got %v", cfg.IgnoreRobots)
 	}
 
+	if cfg.FollowExternalHosts {
+		t.Errorf("Expected follow external hosts false, got %v", cfg.FollowExternalHosts)
+	}
+
 	if cfg.Limit != 0 {
 		t.Errorf("Expected limit 0, got %d", cfg.Limit)
 	}

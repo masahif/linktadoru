@@ -64,6 +64,7 @@ func init() {
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "HTTP request timeout")
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
 	rootCmd.Flags().Bool("ignore-robots", false, "Ignore robots.txt rules")
+	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
 
 	// Authentication type flag
@@ -100,6 +101,7 @@ func init() {
 		{"request_timeout", "timeout"},
 		{"user_agent", "user-agent"},
 		{"ignore_robots", "ignore-robots"},
+		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
 		{"include_patterns", "include-patterns"},
 		{"exclude_patterns", "exclude-patterns"},

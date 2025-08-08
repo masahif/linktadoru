@@ -352,3 +352,109 @@ func (l *LimitTestStorage) GetNextFromQueue() (*URLItem, error) {
 	}
 	return nil, nil
 }
+
+// TestSameHostFiltering tests that only same-host URLs are crawled by default
+func TestSameHostFiltering(t *testing.T) {
+	// Create two test servers on different ports (different hosts)
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><body>External Server Page</body></html>`))
+	}))
+	defer server2.Close()
+
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		// Include links to both servers
+		_, _ = w.Write([]byte(`
+		<html>
+			<body>
+				<a href="/page1">Internal Link</a>
+				<a href="` + server2.URL + `/external">External Link</a>
+			</body>
+		</html>
+		`))
+	}))
+	defer server1.Close()
+
+	// Test default behavior (same-host only)
+	config := &config.CrawlConfig{
+		SeedURLs:            []string{server1.URL},
+		Limit:               10,
+		Concurrency:         1,
+		RequestDelay:        0.01, // 10ms in seconds
+		RequestTimeout:      2 * time.Second,
+		UserAgent:           "LinkTadoru-Test/1.0",
+		IgnoreRobots:        true,
+		FollowExternalHosts: false, // Default - same host only
+	}
+
+	store := &HostFilteringTestStorage{}
+	crawler, err := NewCrawler(config, store)
+	if err != nil {
+		t.Fatalf("Failed to create crawler: %v", err)
+	}
+
+	// Check allowed hosts were set correctly
+	expectedHost := server1.URL
+	if len(crawler.allowedHosts) != 1 || crawler.allowedHosts[0] != expectedHost {
+		t.Errorf("Expected allowedHosts to contain [%s], got %v", expectedHost, crawler.allowedHosts)
+	}
+
+	// Test host filtering logic
+	if !crawler.isAllowedHost(server1.URL + "/page1") {
+		t.Errorf("Same host URL should be allowed")
+	}
+	if crawler.isAllowedHost(server2.URL + "/external") {
+		t.Errorf("External host URL should be blocked")
+	}
+}
+
+// TestExternalHostsEnabled tests that external hosts are crawled when enabled
+func TestExternalHostsEnabled(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><body>Internal Page</body></html>`))
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><body>External Page</body></html>`))
+	}))
+	defer server2.Close()
+
+	// Test with external hosts enabled
+	config := &config.CrawlConfig{
+		SeedURLs:            []string{server1.URL},
+		Limit:               10,
+		Concurrency:         1,
+		RequestDelay:        0.01, // 10ms in seconds
+		RequestTimeout:      2 * time.Second,
+		UserAgent:           "LinkTadoru-Test/1.0",
+		IgnoreRobots:        true,
+		FollowExternalHosts: true, // Enable external hosts
+	}
+
+	store := &HostFilteringTestStorage{}
+	crawler, err := NewCrawler(config, store)
+	if err != nil {
+		t.Fatalf("Failed to create crawler: %v", err)
+	}
+
+	// Test that both internal and external hosts are allowed
+	if !crawler.isAllowedHost(server1.URL + "/page1") {
+		t.Errorf("Same host URL should be allowed")
+	}
+	if !crawler.isAllowedHost(server2.URL + "/external") {
+		t.Errorf("External host URL should be allowed when follow_external_hosts is true")
+	}
+}
+
+// HostFilteringTestStorage for testing host filtering
+type HostFilteringTestStorage struct {
+	MockStorage
+}
