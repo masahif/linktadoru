@@ -83,7 +83,7 @@ func TestLimit(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	// Create test storage using mock
@@ -142,7 +142,7 @@ func TestGetStats(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	store := &MockStorage{}
@@ -195,7 +195,7 @@ func TestIncrementCounters(t *testing.T) {
 		RequestDelay:   0.01, // 10ms in seconds
 		RequestTimeout: 5 * time.Second,
 		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobots:   true,
+		IgnoreRobotsTxt:   true,
 	}
 
 	store := &MockStorage{}

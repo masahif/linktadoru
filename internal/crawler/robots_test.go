@@ -77,7 +77,7 @@ func TestRobotsParserIgnore(t *testing.T) {
 	httpClient := NewHTTPClient("Test-Crawler/1.0", 30*time.Second)
 	defer httpClient.Close()
 
-	parser := NewRobotsParser(httpClient, true) // ignoreRobots = true
+	parser := NewRobotsParser(httpClient, true) // ignoreRobotsTxt = true
 	ctx := context.Background()
 
 	// When ignoring robots.txt, everything should be allowed

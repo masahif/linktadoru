@@ -96,7 +96,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	// Initialize components
 	processor := NewPageProcessor(httpClient)
 	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
-	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobots)
+	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobotsTxt)
 
 	// Extract allowed hosts from seed URLs for same-host filtering
 	allowedHosts := make([]string, 0, len(config.SeedURLs))
@@ -338,7 +338,7 @@ func (c *DefaultCrawler) processURLItem(id int, item *URLItem) {
 
 // shouldProcessURL checks if URL should be processed (robots.txt check)
 func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
-	if c.config.IgnoreRobots {
+	if c.config.IgnoreRobotsTxt {
 		return true
 	}
 

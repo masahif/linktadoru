@@ -100,7 +100,7 @@ func TestInitializeCrawler(t *testing.T) {
 		RequestDelay:   1.0, // 1 second
 		RequestTimeout: 30 * time.Second,
 		UserAgent:      "TestAgent/1.0",
-		IgnoreRobots:   false,
+		IgnoreRobotsTxt: false,
 		DatabasePath:   dbPath,
 		Limit:          10,
 	}
@@ -137,7 +137,7 @@ func TestRunCrawlerValidation(t *testing.T) {
 	cmd.Flags().Float64("delay", 1.0, "")
 	cmd.Flags().Duration("timeout", 30*time.Second, "")
 	cmd.Flags().String("user-agent", "LinkTadoru/1.0", "")
-	cmd.Flags().Bool("ignore-robots", false, "")
+	cmd.Flags().Bool("ignore-robots-txt", false, "")
 	cmd.Flags().Int("limit", 0, "")
 	cmd.Flags().StringSlice("include-patterns", []string{}, "")
 	cmd.Flags().StringSlice("exclude-patterns", []string{}, "")
@@ -148,7 +148,7 @@ func TestRunCrawlerValidation(t *testing.T) {
 	_ = viper.BindPFlag("request_delay", cmd.Flags().Lookup("delay"))
 	_ = viper.BindPFlag("request_timeout", cmd.Flags().Lookup("timeout"))
 	_ = viper.BindPFlag("user_agent", cmd.Flags().Lookup("user-agent"))
-	_ = viper.BindPFlag("ignore_robots", cmd.Flags().Lookup("ignore-robots"))
+	_ = viper.BindPFlag("ignore_robots_txt", cmd.Flags().Lookup("ignore-robots-txt"))
 	_ = viper.BindPFlag("limit", cmd.Flags().Lookup("limit"))
 	_ = viper.BindPFlag("include_patterns", cmd.Flags().Lookup("include-patterns"))
 	_ = viper.BindPFlag("exclude_patterns", cmd.Flags().Lookup("exclude-patterns"))
@@ -181,7 +181,7 @@ func TestFlagBinding(t *testing.T) {
 		"delay",
 		"timeout",
 		"user-agent",
-		"ignore-robots",
+		"ignore-robots-txt",
 		"limit",
 		"include-patterns",
 		"exclude-patterns",

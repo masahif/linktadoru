@@ -26,8 +26,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected user agent 'LinkTadoru/1.0', got %s", cfg.UserAgent)
 	}
 
-	if cfg.IgnoreRobots {
-		t.Errorf("Expected ignore robots false, got %v", cfg.IgnoreRobots)
+	if cfg.IgnoreRobotsTxt {
+		t.Errorf("Expected ignore robots.txt false, got %v", cfg.IgnoreRobotsTxt)
 	}
 
 	if cfg.FollowExternalHosts {

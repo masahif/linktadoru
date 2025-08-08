@@ -57,7 +57,7 @@ type CrawlConfig struct {
 	RequestDelay   float64       `mapstructure:"request_delay" yaml:"request_delay"`     // Delay between requests
 	RequestTimeout time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"` // HTTP request timeout
 	UserAgent      string        `mapstructure:"user_agent" yaml:"user_agent"`           // HTTP User-Agent header
-	IgnoreRobots        bool          `mapstructure:"ignore_robots" yaml:"ignore_robots"`                 // Whether to ignore robots.txt
+	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
 	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
 	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
 
@@ -82,7 +82,7 @@ func DefaultConfig() *CrawlConfig {
 		RequestDelay:        0.1,   // 100ms in seconds // Reduced from 1s to 0.1s
 		RequestTimeout:      30 * time.Second,
 		UserAgent:           "LinkTadoru/1.0",
-		IgnoreRobots:        false,
+		IgnoreRobotsTxt:     false,
 		FollowExternalHosts: false, // Default to same-host only for safety
 		Limit:               0,     // unlimited
 		DatabasePath:        "./linktadoru.db",

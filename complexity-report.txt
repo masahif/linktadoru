@@ -1,5 +1,5 @@
 === Cyclomatic Complexity Report ===
-Generated: Fri Aug  8 07:15:49 UTC 2025
+Generated: Fri Aug  8 16:50:23 JST 2025
 
 Functions with complexity > 15:
 22 storage testQueueStatusTracking internal/storage/sqlite_test.go:346:1
