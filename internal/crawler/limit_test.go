@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // MockStorage implements Storage interface for testing

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"linktadoru/internal/cmd"
+	"github.com/masahif/linktadoru/internal/cmd"
 )
 
 // Version information set by build flags

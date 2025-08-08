@@ -3,7 +3,7 @@ package crawler
 import (
 	"testing"
 
-	"linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 func TestShouldCrawlURL(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"linktadoru/internal/crawler"
+	"github.com/masahif/linktadoru/internal/crawler"
 	// SQLite database driver (CGO-free)
 	_ "modernc.org/sqlite"
 )
@@ -390,11 +390,11 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 		FROM pages 
 		WHERE status IN ('queued', 'processing')
 	`).Scan(&count)
-	
+
 	if err != nil {
 		return false, fmt.Errorf("failed to check queued items: %w", err)
 	}
-	
+
 	return count > 0, nil
 }
 

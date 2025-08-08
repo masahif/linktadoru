@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/config"
 )
 
 // TestStartStop tests the Start and Stop methods
