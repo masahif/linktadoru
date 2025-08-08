@@ -192,55 +192,100 @@ func (c *CrawlConfig) validateAuth() error {
 	}
 
 	// Check for multiple authentication types configured
+	if err := c.validateSingleAuthType(); err != nil {
+		return err
+	}
+
+	// Validate specific auth type configuration
+	return c.validateAuthTypeConfiguration()
+}
+
+// validateSingleAuthType ensures only one auth type is configured
+func (c *CrawlConfig) validateSingleAuthType() error {
 	configuredAuthTypes := 0
-	if c.Auth.Basic != nil && (c.Auth.Basic.Username != "" || c.Auth.Basic.Password != "" ||
-		c.Auth.Basic.UsernameEnv != "" || c.Auth.Basic.PasswordEnv != "") {
+
+	if c.isBasicAuthConfigured() {
 		configuredAuthTypes++
 	}
-	if c.Auth.Bearer != nil && (c.Auth.Bearer.Token != "" || c.Auth.Bearer.TokenEnv != "") {
+	if c.isBearerAuthConfigured() {
 		configuredAuthTypes++
 	}
-	if c.Auth.APIKey != nil && (c.Auth.APIKey.Header != "" || c.Auth.APIKey.Value != "" ||
-		c.Auth.APIKey.HeaderEnv != "" || c.Auth.APIKey.ValueEnv != "") {
+	if c.isAPIKeyAuthConfigured() {
 		configuredAuthTypes++
 	}
 
 	if configuredAuthTypes > 1 {
 		return fmt.Errorf("multiple authentication types configured simultaneously - please use only one")
 	}
+	return nil
+}
 
+// isBasicAuthConfigured checks if basic auth is configured
+func (c *CrawlConfig) isBasicAuthConfigured() bool {
+	return c.Auth.Basic != nil && (c.Auth.Basic.Username != "" || c.Auth.Basic.Password != "" ||
+		c.Auth.Basic.UsernameEnv != "" || c.Auth.Basic.PasswordEnv != "")
+}
+
+// isBearerAuthConfigured checks if bearer auth is configured
+func (c *CrawlConfig) isBearerAuthConfigured() bool {
+	return c.Auth.Bearer != nil && (c.Auth.Bearer.Token != "" || c.Auth.Bearer.TokenEnv != "")
+}
+
+// isAPIKeyAuthConfigured checks if API key auth is configured
+func (c *CrawlConfig) isAPIKeyAuthConfigured() bool {
+	return c.Auth.APIKey != nil && (c.Auth.APIKey.Header != "" || c.Auth.APIKey.Value != "" ||
+		c.Auth.APIKey.HeaderEnv != "" || c.Auth.APIKey.ValueEnv != "")
+}
+
+// validateAuthTypeConfiguration validates the specific auth type configuration
+func (c *CrawlConfig) validateAuthTypeConfiguration() error {
 	switch c.Auth.Type {
 	case NoAuth:
-		// No authentication required
 		return nil
 	case BasicAuthType:
-		if c.Auth.Basic == nil {
-			return fmt.Errorf("basic auth type specified but no basic auth configuration provided")
-		}
-		username, password := c.GetBasicAuthCredentials()
-		if username == "" || password == "" {
-			return fmt.Errorf("basic auth requires both username and password")
-		}
+		return c.validateBasicAuth()
 	case BearerAuthType:
-		if c.Auth.Bearer == nil {
-			return fmt.Errorf("bearer auth type specified but no bearer auth configuration provided")
-		}
-		token := c.GetBearerToken()
-		if token == "" {
-			return fmt.Errorf("bearer auth requires token")
-		}
+		return c.validateBearerAuth()
 	case APIKeyAuthType:
-		if c.Auth.APIKey == nil {
-			return fmt.Errorf("api-key auth type specified but no api-key auth configuration provided")
-		}
-		header, value := c.GetAPIKeyCredentials()
-		if header == "" || value == "" {
-			return fmt.Errorf("api-key auth requires both header and value")
-		}
+		return c.validateAPIKeyAuth()
 	default:
 		return fmt.Errorf("unsupported authentication type: %s", c.Auth.Type)
 	}
+}
 
+// validateBasicAuth validates basic authentication configuration
+func (c *CrawlConfig) validateBasicAuth() error {
+	if c.Auth.Basic == nil {
+		return fmt.Errorf("basic auth type specified but no basic auth configuration provided")
+	}
+	username, password := c.GetBasicAuthCredentials()
+	if username == "" || password == "" {
+		return fmt.Errorf("basic auth requires both username and password")
+	}
+	return nil
+}
+
+// validateBearerAuth validates bearer authentication configuration
+func (c *CrawlConfig) validateBearerAuth() error {
+	if c.Auth.Bearer == nil {
+		return fmt.Errorf("bearer auth type specified but no bearer auth configuration provided")
+	}
+	token := c.GetBearerToken()
+	if token == "" {
+		return fmt.Errorf("bearer auth requires token")
+	}
+	return nil
+}
+
+// validateAPIKeyAuth validates API key authentication configuration
+func (c *CrawlConfig) validateAPIKeyAuth() error {
+	if c.Auth.APIKey == nil {
+		return fmt.Errorf("api-key auth type specified but no api-key auth configuration provided")
+	}
+	header, value := c.GetAPIKeyCredentials()
+	if header == "" || value == "" {
+		return fmt.Errorf("api-key auth requires both header and value")
+	}
 	return nil
 }
 

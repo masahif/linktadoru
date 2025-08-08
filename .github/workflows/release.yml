@@ -12,6 +12,7 @@ env:
   GO_VERSION: '1.23'
 
 jobs:
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest

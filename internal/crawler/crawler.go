@@ -196,16 +196,7 @@ func (c *DefaultCrawler) GetStats() CrawlStats {
 // 3. No queued items available (SELECT returns empty result)
 func (c *DefaultCrawler) worker(id int) {
 	defer c.wg.Done()
-	defer func() {
-		c.workersMutex.Lock()
-		c.activeWorkers--
-		if c.activeWorkers == 0 {
-			// All workers are done, cancel context to stop stats reporter
-			c.cancel()
-		}
-		c.workersMutex.Unlock()
-		slog.Debug("Worker stopped", "worker_id", id)
-	}()
+	defer c.handleWorkerShutdown(id)
 
 	slog.Debug("Worker started", "worker_id", id)
 
@@ -214,128 +205,181 @@ func (c *DefaultCrawler) worker(id int) {
 		case <-c.ctx.Done():
 			return
 		default:
-			// Check if we've reached the limit
-			c.statsMutex.RLock()
-			if c.config.Limit > 0 && c.stats.PagesCrawled >= c.config.Limit {
-				c.statsMutex.RUnlock()
-				slog.Info("Worker reached limit", "worker_id", id)
+			if c.shouldStopWorker(id) {
 				return
 			}
-			c.statsMutex.RUnlock()
 
-			// Get next item from queue
 			item, err := c.storage.GetNextFromQueue()
 			if err != nil {
 				slog.Error("Worker failed to get from queue", "worker_id", id, "error", err)
-				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
+				c.workerSleep()
 				continue
 			}
 
 			if item == nil {
-				// No items in queue, check if we should exit
-				c.statsMutex.RLock()
-				crawled := c.stats.PagesCrawled
-				c.statsMutex.RUnlock()
-
-				if crawled > 0 {
-					// We've processed at least one page and queue is empty
+				if c.shouldExitOnEmptyQueue() {
 					slog.Debug("Worker no more items in queue, exiting", "worker_id", id)
 					return
 				}
-
-				// Wait and try again with configured delay
-				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
+				c.workerSleep()
 				continue
 			}
 
-			// Check robots.txt
-			if !c.config.IgnoreRobots {
-				allowed, err := c.robotsParser.IsAllowed(c.ctx, item.URL, c.config.UserAgent)
-				if err != nil {
-					slog.Warn("Worker robots.txt check failed", "worker_id", id, "url", item.URL, "error", err)
-				}
-				if !allowed {
-					slog.Info("URL disallowed by robots.txt", "worker_id", id, "url", item.URL)
-					// Mark as error and continue
-					if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
-						slog.Error("Worker failed to save robots error", "worker_id", id, "error", err)
-					}
-					time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
-					continue
-				}
-			}
-
-			// Rate limiting
-			if err := c.rateLimiter.Wait(c.ctx, item.URL); err != nil {
-				slog.Error("Worker rate limiting error", "worker_id", id, "error", err)
-				continue
-			}
-
-			// Process the page
-			result, err := c.processor.Process(c.ctx, item.URL)
-			if err != nil {
-				slog.Error("Worker failed to process URL", "worker_id", id, "url", item.URL, "error", err)
-				// Save page error
-				if saveErr := c.storage.SavePageError(item.ID, "processing_error", err.Error()); saveErr != nil {
-					slog.Error("Worker failed to save processing error", "worker_id", id, "error", saveErr)
-				}
-				c.incrementErrorCount()
-				time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
-				continue
-			}
-
-			// Save page result
-			if result.Page != nil {
-				if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
-					slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
-				} else {
-					c.incrementCrawledCount()
-				}
-			}
-
-			// Save all links in batch (much faster than individual saves)
-			if err := c.storage.SaveLinks(result.Links); err != nil {
-				slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
-			}
-
-			// Collect new URLs to queue
-			var newURLs []string
-			for _, link := range result.Links {
-				// Add internal links to queue if not already exists and matches patterns
-				if link.LinkType == "internal" && c.shouldCrawlURL(link.TargetURL) {
-					// Check if URL already exists in any status
-					if status, exists := c.storage.GetURLStatus(link.TargetURL); !exists {
-						newURLs = append(newURLs, link.TargetURL)
-					} else {
-						// URL exists, can log if needed
-						_ = status // URL already tracked
-					}
-				}
-			}
-
-			// Add new URLs to queue in batch
-			if len(newURLs) > 0 {
-				if err := c.storage.AddToQueue(newURLs); err != nil {
-					slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
-				}
-			}
-
-			// Save error if any (separate from page processing errors)
-			if result.Error != nil {
-				if err := c.storage.SaveError(result.Error); err != nil {
-					slog.Error("Worker failed to save error", "worker_id", id, "url", item.URL, "error", err)
-				}
-			}
-
-			if result.Page != nil {
-				slog.Info("Worker processed URL", "worker_id", id, "url", item.URL, "status", result.Page.StatusCode, "links", len(result.Links))
-			} else {
-				slog.Info("Worker processed URL (failed)", "worker_id", id, "url", item.URL, "links", len(result.Links))
-			}
-
-			// Delay after processing to allow other workers to coordinate
-			time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
+			c.processURLItem(id, item)
 		}
+	}
+}
+
+// handleWorkerShutdown handles worker cleanup when shutting down
+func (c *DefaultCrawler) handleWorkerShutdown(id int) {
+	c.workersMutex.Lock()
+	c.activeWorkers--
+	if c.activeWorkers == 0 {
+		// All workers are done, cancel context to stop stats reporter
+		c.cancel()
+	}
+	c.workersMutex.Unlock()
+	slog.Debug("Worker stopped", "worker_id", id)
+}
+
+// shouldStopWorker checks if worker should stop due to limit reached
+func (c *DefaultCrawler) shouldStopWorker(id int) bool {
+	c.statsMutex.RLock()
+	defer c.statsMutex.RUnlock()
+
+	if c.config.Limit > 0 && c.stats.PagesCrawled >= c.config.Limit {
+		slog.Info("Worker reached limit", "worker_id", id)
+		return true
+	}
+	return false
+}
+
+// shouldExitOnEmptyQueue checks if worker should exit when queue is empty
+func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
+	c.statsMutex.RLock()
+	defer c.statsMutex.RUnlock()
+
+	return c.stats.PagesCrawled > 0
+}
+
+// workerSleep applies the configured delay between requests
+func (c *DefaultCrawler) workerSleep() {
+	time.Sleep(time.Duration(c.config.RequestDelay * float64(time.Second)))
+}
+
+// processURLItem processes a single URL item from the queue
+func (c *DefaultCrawler) processURLItem(id int, item *URLItem) {
+	// Check robots.txt
+	if !c.shouldProcessURL(id, item) {
+		return
+	}
+
+	// Rate limiting
+	if err := c.rateLimiter.Wait(c.ctx, item.URL); err != nil {
+		slog.Error("Worker rate limiting error", "worker_id", id, "error", err)
+		return
+	}
+
+	// Process the page
+	result, err := c.processor.Process(c.ctx, item.URL)
+	if err != nil {
+		c.handleProcessingError(id, item, err)
+		return
+	}
+
+	c.handleProcessingResult(id, item, result)
+}
+
+// shouldProcessURL checks if URL should be processed (robots.txt check)
+func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
+	if c.config.IgnoreRobots {
+		return true
+	}
+
+	allowed, err := c.robotsParser.IsAllowed(c.ctx, item.URL, c.config.UserAgent)
+	if err != nil {
+		slog.Warn("Worker robots.txt check failed", "worker_id", id, "url", item.URL, "error", err)
+	}
+	if !allowed {
+		slog.Info("URL disallowed by robots.txt", "worker_id", id, "url", item.URL)
+		if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
+			slog.Error("Worker failed to save robots error", "worker_id", id, "error", err)
+		}
+		c.workerSleep()
+		return false
+	}
+	return true
+}
+
+// handleProcessingError handles errors during page processing
+func (c *DefaultCrawler) handleProcessingError(id int, item *URLItem, err error) {
+	slog.Error("Worker failed to process URL", "worker_id", id, "url", item.URL, "error", err)
+	if saveErr := c.storage.SavePageError(item.ID, "processing_error", err.Error()); saveErr != nil {
+		slog.Error("Worker failed to save processing error", "worker_id", id, "error", saveErr)
+	}
+	c.incrementErrorCount()
+	c.workerSleep()
+}
+
+// handleProcessingResult handles successful page processing results
+func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *PageResult) {
+	// Save page result
+	if result.Page != nil {
+		if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
+			slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
+		} else {
+			c.incrementCrawledCount()
+		}
+	}
+
+	// Save all links in batch
+	if err := c.storage.SaveLinks(result.Links); err != nil {
+		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
+	}
+
+	// Process new URLs for crawling
+	c.processNewURLs(id, result.Links, item.URL)
+
+	// Save error if any (separate from page processing errors)
+	if result.Error != nil {
+		if err := c.storage.SaveError(result.Error); err != nil {
+			slog.Error("Worker failed to save error", "worker_id", id, "url", item.URL, "error", err)
+		}
+	}
+
+	// Log processing result
+	c.logProcessingResult(id, item.URL, result)
+
+	// Delay after processing
+	c.workerSleep()
+}
+
+// processNewURLs collects and queues new URLs from links
+func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
+	var newURLs []string
+	for _, link := range links {
+		if link.LinkType == "internal" && c.shouldCrawlURL(link.TargetURL) {
+			if status, exists := c.storage.GetURLStatus(link.TargetURL); !exists {
+				newURLs = append(newURLs, link.TargetURL)
+			} else {
+				_ = status // URL already tracked
+			}
+		}
+	}
+
+	if len(newURLs) > 0 {
+		if err := c.storage.AddToQueue(newURLs); err != nil {
+			slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
+		}
+	}
+}
+
+// logProcessingResult logs the result of URL processing
+func (c *DefaultCrawler) logProcessingResult(id int, url string, result *PageResult) {
+	if result.Page != nil {
+		slog.Info("Worker processed URL", "worker_id", id, "url", url, "status", result.Page.StatusCode, "links", len(result.Links))
+	} else {
+		slog.Info("Worker processed URL (failed)", "worker_id", id, "url", url, "links", len(result.Links))
 	}
 }
 

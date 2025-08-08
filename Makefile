@@ -68,6 +68,7 @@ test-clean:
 	rm -f test_*.db*
 	rm -f *.test
 	rm -f coverage.out coverage.html coverage.txt
+	rm -f complexity-report.txt
 
 ## lint: Run golangci-lint
 .PHONY: lint
@@ -87,6 +88,91 @@ fmt:
 vet:
 	@echo "Running go vet..."
 	go vet ./...
+
+## cyclo: Check cyclomatic complexity (warning only)
+.PHONY: cyclo
+cyclo:
+	@echo "Checking cyclomatic complexity..."
+	@if command -v gocyclo >/dev/null 2>&1; then \
+		if gocyclo -over 15 . >/dev/null 2>&1; then \
+			echo "✓ All functions have acceptable complexity (≤15)"; \
+		else \
+			echo "⚠ Warning: Some functions exceed complexity threshold of 15:"; \
+			gocyclo -over 15 .; \
+			echo "Consider refactoring complex functions for better maintainability."; \
+		fi \
+	else \
+		echo "gocyclo not installed. Install with: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest"; \
+		exit 1; \
+	fi
+
+## cyclo-strict: Check cyclomatic complexity (fail on violations)
+.PHONY: cyclo-strict
+cyclo-strict:
+	@echo "Checking cyclomatic complexity (strict mode)..."
+	@if command -v gocyclo >/dev/null 2>&1; then \
+		gocyclo -over 15 . && echo "✓ All functions have acceptable complexity (≤15)" || (echo "❌ Some functions exceed complexity threshold of 15" && exit 1); \
+	else \
+		echo "gocyclo not installed. Install with: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest"; \
+		exit 1; \
+	fi
+
+## cyclo-gate: Intelligent complexity gate (fail only on severe violations)
+.PHONY: cyclo-gate
+cyclo-gate:
+	@echo "Running intelligent complexity gate..."
+	@if command -v gocyclo >/dev/null 2>&1; then \
+		HIGH_COMPLEXITY=$$(gocyclo -over 25 . | wc -l); \
+		VERY_HIGH_COMPLEXITY=$$(gocyclo -over 40 . | wc -l); \
+		TOTAL_OVER_15=$$(gocyclo -over 15 . | wc -l); \
+		echo "📊 Complexity Analysis:"; \
+		echo "  Functions > 15: $$TOTAL_OVER_15"; \
+		echo "  Functions > 25: $$HIGH_COMPLEXITY"; \
+		echo "  Functions > 40: $$VERY_HIGH_COMPLEXITY"; \
+		if [ $$VERY_HIGH_COMPLEXITY -gt 0 ]; then \
+			echo "❌ CRITICAL: Functions with complexity > 40 found:"; \
+			gocyclo -over 40 .; \
+			echo "These must be refactored before release."; \
+			exit 1; \
+		elif [ $$HIGH_COMPLEXITY -gt 5 ]; then \
+			echo "❌ WARNING: More than 5 functions with complexity > 25:"; \
+			gocyclo -over 25 .; \
+			echo "Consider refactoring some of these functions."; \
+			exit 1; \
+		elif [ $$TOTAL_OVER_15 -gt 15 ]; then \
+			echo "❌ INFO: More than 15 functions with complexity > 15:"; \
+			echo "Consider general code cleanup."; \
+			exit 1; \
+		else \
+			echo "✅ Complexity gate passed"; \
+			echo "  - No functions > 40 (critical)"; \
+			echo "  - ≤ 5 functions > 25 (high)"; \
+			echo "  - ≤ 15 functions > 15 (moderate)"; \
+		fi \
+	else \
+		echo "gocyclo not installed. Install with: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest"; \
+		exit 1; \
+	fi
+
+## cyclo-report: Generate detailed complexity report
+.PHONY: cyclo-report
+cyclo-report:
+	@echo "Generating cyclomatic complexity report..."
+	@if command -v gocyclo >/dev/null 2>&1; then \
+		echo "=== Cyclomatic Complexity Report ===" > complexity-report.txt; \
+		echo "Generated: $$(date)" >> complexity-report.txt; \
+		echo "" >> complexity-report.txt; \
+		echo "Functions with complexity > 15:" >> complexity-report.txt; \
+		gocyclo -over 15 . >> complexity-report.txt || echo "No functions exceed complexity of 15" >> complexity-report.txt; \
+		echo "" >> complexity-report.txt; \
+		echo "Overall complexity statistics:" >> complexity-report.txt; \
+		gocyclo -avg . | tail -1 >> complexity-report.txt; \
+		echo "Report saved to: complexity-report.txt"; \
+		cat complexity-report.txt; \
+	else \
+		echo "gocyclo not installed. Install with: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest"; \
+		exit 1; \
+	fi
 
 ## clean: Clean build artifacts and test files
 .PHONY: clean
@@ -178,9 +264,9 @@ release: release-linux release-darwin release-windows
 	@echo "All release binaries ready in ${DIST_DIR}/"
 	@ls -la ${DIST_DIR}/
 
-## check: Run all checks (fmt, vet, lint, test)
+## check: Run all checks (fmt, vet, lint, cyclo, test)
 .PHONY: check
-check: fmt vet lint test
+check: fmt vet lint cyclo test
 
 ## ci: Run CI pipeline (deps, check, build)
 .PHONY: ci

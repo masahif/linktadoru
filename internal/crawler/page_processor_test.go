@@ -61,79 +61,84 @@ func TestPageProcessor(t *testing.T) {
 	processor := NewPageProcessor(httpClient)
 	ctx := context.Background()
 
-	t.Run("ProcessHTMLPage", func(t *testing.T) {
-		result, err := processor.Process(ctx, server.URL+"/test-page")
-		if err != nil {
-			t.Fatalf("Failed to process page: %v", err)
-		}
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+		expectedTitle  string
+		expectedDesc   string
+		expectedLinks  int
+		expectError    bool
+		errorType      string
+		contentType    string
+	}{
+		{
+			name:           "ProcessHTMLPage",
+			path:           "/test-page",
+			expectedStatus: 200,
+			expectedTitle:  "Test Page",
+			expectedDesc:   "Test description",
+			expectedLinks:  2,
+			expectError:    false,
+		},
+		{
+			name:           "Process404Page",
+			path:           "/404",
+			expectedStatus: 404,
+			expectedLinks:  0,
+			expectError:    false,
+		},
+		{
+			name:           "ProcessNonHTMLPage",
+			path:           "/non-html",
+			expectedStatus: 200,
+			expectedLinks:  0,
+			expectError:    false,
+			contentType:    "application/json",
+		},
+	}
 
-		// Check page data
-		if result.Page.StatusCode != 200 {
-			t.Errorf("Expected status code 200, got %d", result.Page.StatusCode)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := processor.Process(ctx, server.URL+tt.path)
+			if err != nil {
+				t.Fatalf("Failed to process page: %v", err)
+			}
 
-		if result.Page.Title != "Test Page" {
-			t.Errorf("Expected title 'Test Page', got '%s'", result.Page.Title)
-		}
+			// Check status code
+			if result.Page.StatusCode != tt.expectedStatus {
+				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, result.Page.StatusCode)
+			}
 
-		if result.Page.MetaDesc != "Test description" {
-			t.Errorf("Expected description 'Test description', got '%s'", result.Page.MetaDesc)
-		}
+			// Check title for HTML pages
+			if tt.expectedTitle != "" && result.Page.Title != tt.expectedTitle {
+				t.Errorf("Expected title '%s', got '%s'", tt.expectedTitle, result.Page.Title)
+			}
 
-		if result.Page.ContentHash == "" {
-			t.Error("Expected non-empty content hash")
-		}
+			// Check description
+			if tt.expectedDesc != "" && result.Page.MetaDesc != tt.expectedDesc {
+				t.Errorf("Expected description '%s', got '%s'", tt.expectedDesc, result.Page.MetaDesc)
+			}
 
-		// Check links
-		if len(result.Links) != 2 {
-			t.Fatalf("Expected 2 links, got %d", len(result.Links))
-		}
+			// Check links count
+			if len(result.Links) != tt.expectedLinks {
+				t.Errorf("Expected %d links, got %d", tt.expectedLinks, len(result.Links))
+			}
 
-		// Check internal link
-		if result.Links[0].LinkType != "internal" {
-			t.Errorf("Expected first link to be internal")
-		}
+			// Check content type if specified
+			if tt.contentType != "" && result.Page.HTTPHeaders["content-type"] != tt.contentType {
+				t.Errorf("Expected content type '%s', got '%s'", tt.contentType, result.Page.HTTPHeaders["content-type"])
+			}
 
-		// Check external link
-		if result.Links[1].LinkType != "external" {
-			t.Errorf("Expected second link to be external")
-		}
-	})
+			// Additional validation for HTML page
+			if tt.name == "ProcessHTMLPage" {
+				validateHTMLPageLinks(t, result)
+			}
+		})
+	}
 
-	t.Run("Process404Page", func(t *testing.T) {
-		result, err := processor.Process(ctx, server.URL+"/404")
-		if err != nil {
-			t.Fatalf("Failed to process 404 page: %v", err)
-		}
-
-		if result.Page.StatusCode != 404 {
-			t.Errorf("Expected status code 404, got %d", result.Page.StatusCode)
-		}
-
-		// Should not parse HTML for error pages
-		if len(result.Links) != 0 {
-			t.Errorf("Expected no links for 404 page, got %d", len(result.Links))
-		}
-	})
-
-	t.Run("ProcessNonHTMLPage", func(t *testing.T) {
-		result, err := processor.Process(ctx, server.URL+"/non-html")
-		if err != nil {
-			t.Fatalf("Failed to process non-HTML page: %v", err)
-		}
-
-		if result.Page.HTTPHeaders["content-type"] != "application/json" {
-			t.Errorf("Expected content type 'application/json', got '%s'", result.Page.HTTPHeaders["content-type"])
-		}
-
-		// Should not parse non-HTML content
-		if len(result.Links) != 0 {
-			t.Errorf("Expected no links for non-HTML page, got %d", len(result.Links))
-		}
-	})
-
+	// Test network error separately due to different URL
 	t.Run("ProcessNetworkError", func(t *testing.T) {
-		// Try to process unreachable URL
 		result, err := processor.Process(ctx, "http://localhost:99999/unreachable")
 		if err != nil {
 			t.Fatalf("Process should not return error, but capture it: %v", err)
@@ -147,4 +152,18 @@ func TestPageProcessor(t *testing.T) {
 			t.Errorf("Expected error type 'network_error', got '%s'", result.Error.ErrorType)
 		}
 	})
+}
+
+func validateHTMLPageLinks(t *testing.T, result *PageResult) {
+	if result.Page.ContentHash == "" {
+		t.Error("Expected non-empty content hash")
+	}
+
+	if len(result.Links) >= 1 && result.Links[0].LinkType != "internal" {
+		t.Errorf("Expected first link to be internal")
+	}
+
+	if len(result.Links) >= 2 && result.Links[1].LinkType != "external" {
+		t.Errorf("Expected second link to be external")
+	}
 }

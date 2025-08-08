@@ -241,7 +241,7 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test database: %v", err)
 		}
-		emptyStore.Close()
+		_ = emptyStore.Close()
 
 		// Create a mock command
 		cmd := &cobra.Command{}
@@ -284,7 +284,7 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 			t.Fatal("Expected queued items, but HasQueuedItems returned false")
 		}
 
-		testStore.Close()
+		_ = testStore.Close()
 
 		// For this test case, we only verify that the database validation logic works
 		// We don't actually run the crawler to avoid infinite loops in tests
@@ -300,7 +300,7 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen test database: %v", err)
 		}
-		defer testStorage.Close()
+		defer func() { _ = testStorage.Close() }()
 
 		hasItems, err = testStorage.HasQueuedItems()
 		if err != nil {
