@@ -16,6 +16,7 @@ import (
 
 	"github.com/masahif/linktadoru/internal/config"
 	"github.com/masahif/linktadoru/internal/crawler"
+	"github.com/masahif/linktadoru/internal/logging"
 	"github.com/masahif/linktadoru/internal/storage"
 )
 
@@ -212,6 +213,18 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	// Handle --show-config: display current configuration and exit
 	if showConfig {
 		return showCurrentConfig(cfg)
+	}
+
+	// Initialize logging
+	logConfig := logging.Config{
+		Level:      logging.ParseLevel(cfg.LogLevel),
+		FilePath:   cfg.LogFile,
+		MaxSize:    int64(cfg.LogMaxSize),
+		MaxBackups: cfg.LogMaxBackups,
+		Console:    cfg.LogConsole,
+	}
+	if err := logging.SetDefault(logConfig); err != nil {
+		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 
 	// Validate configuration

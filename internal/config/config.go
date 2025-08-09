@@ -73,6 +73,13 @@ type CrawlConfig struct {
 
 	// Database configuration
 	DatabasePath string `mapstructure:"database_path" yaml:"database_path"` // Path to SQLite database file
+
+	// Logging configuration
+	LogLevel      string `mapstructure:"log_level" yaml:"log_level"`           // Log level (debug, info, warn, error)
+	LogFile       string `mapstructure:"log_file" yaml:"log_file"`             // Path to log file
+	LogMaxSize    int    `mapstructure:"log_max_size" yaml:"log_max_size"`     // Max log file size in MB
+	LogMaxBackups int    `mapstructure:"log_max_backups" yaml:"log_max_backups"` // Number of old log files to keep
+	LogConsole    bool   `mapstructure:"log_console" yaml:"log_console"`       // Enable console output
 }
 
 // DefaultConfig returns a configuration with default values
@@ -86,6 +93,12 @@ func DefaultConfig() *CrawlConfig {
 		FollowExternalHosts: false, // Default to same-host only for safety
 		Limit:               0,     // unlimited
 		DatabasePath:        "./linktadoru.db",
+		// Logging defaults
+		LogLevel:      "info",
+		LogFile:       "",    // Empty means no file logging by default
+		LogMaxSize:    100,   // 100MB
+		LogMaxBackups: 5,
+		LogConsole:    true,  // Console output enabled by default
 	}
 }
 
