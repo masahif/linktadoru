@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "/home/mfukuda/.local/bin/uvx",
+      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"]
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

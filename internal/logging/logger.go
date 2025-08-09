@@ -57,7 +57,7 @@ func NewLogger(config Config) (*slog.Logger, error) {
 	if config.FilePath != "" {
 		// Ensure directory exists
 		dir := filepath.Dir(config.FilePath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil {
 			return nil, err
 		}
 

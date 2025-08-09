@@ -35,7 +35,7 @@ func NewRotatingFileWriter(filePath string, maxSize int64, maxBackups int) (*Rot
 	// Get current file size
 	info, err := w.file.Stat()
 	if err != nil {
-		w.file.Close()
+		_ = w.file.Close()
 		return nil, err
 	}
 	w.size = info.Size()
@@ -73,7 +73,7 @@ func (w *RotatingFileWriter) Close() error {
 
 // openFile opens the log file for writing
 func (w *RotatingFileWriter) openFile() error {
-	file, err := os.OpenFile(w.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(w.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (w *RotatingFileWriter) rotate() error {
 		
 		// Remove the oldest backup if it exists
 		if i == w.maxBackups-1 {
-			os.Remove(newPath)
+			_ = os.Remove(newPath)
 			continue
 		}
 		
@@ -110,10 +110,8 @@ func (w *RotatingFileWriter) rotate() error {
 	}
 
 	// Rename current file to .1
-	if err := os.Rename(w.filePath, w.backupName(1)); err != nil {
-		// If rename fails, try to continue anyway
-		// This might happen if the file doesn't exist yet
-	}
+	_ = os.Rename(w.filePath, w.backupName(1))
+	// If rename fails, we continue anyway as the file might not exist yet
 
 	// Create new file
 	if err := w.openFile(); err != nil {
