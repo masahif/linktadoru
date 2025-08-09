@@ -2,10 +2,10 @@ package crawler
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -14,8 +14,10 @@ import (
 )
 
 func init() {
-	// Disable slog output during testing
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	// Set error level logging during tests to only show critical issues
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelError,
+	}))
 	slog.SetDefault(logger)
 }
 
