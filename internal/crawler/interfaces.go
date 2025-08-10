@@ -27,6 +27,7 @@ type Storage interface {
 	// Page results (updates existing queued entry)
 	SavePageResult(id int, page *PageData) error
 	SavePageError(id int, errorType, errorMessage string) error
+	SavePageSkipped(id int, reason, message string) error
 
 	// Link/Error results (separate tables)
 	SaveLink(link *LinkData) error
@@ -34,10 +35,14 @@ type Storage interface {
 	SaveError(err *CrawlError) error
 
 	// Queue status
-	GetQueueStatus() (queued int, processing int, completed int, errors int, err error)
+	GetQueueStatus() (pending int, processing int, completed int, errors int, err error)
 	GetProcessingItems() ([]URLItem, error)
 	CleanupStaleProcessing(timeout time.Duration) error
-	HasQueuedItems() (bool, error) // Check if queue has any work items (queued or processing)
+	HasQueuedItems() (bool, error) // Check if queue has any work items (pending or processing)
+
+	// Retry management
+	GetRetryablePages(maxRetries int) ([]URLItem, error)
+	RequeueErrorPages(maxRetries int) (int, error)
 
 	// Meta-data management
 	GetMeta(key string) (string, error)

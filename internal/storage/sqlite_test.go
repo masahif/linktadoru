@@ -371,12 +371,12 @@ func testQueueStatusTracking(t *testing.T) {
 	}
 
 	// Check initial status
-	queued, processing, completed, errors, err := statusStorage.GetQueueStatus()
+	pending, processing, completed, errors, err := statusStorage.GetQueueStatus()
 	if err != nil {
 		t.Errorf("Failed to get queue status: %v", err)
 	}
-	if queued != 2 || processing != 0 {
-		t.Errorf("Expected queued=2, processing=0, got queued=%d, processing=%d", queued, processing)
+	if pending != 2 || processing != 0 {
+		t.Errorf("Expected pending=2, processing=0, got pending=%d, processing=%d", pending, processing)
 	}
 	_ = completed // Ignore for this test
 	_ = errors    // Ignore for this test
@@ -392,12 +392,12 @@ func testQueueStatusTracking(t *testing.T) {
 	}
 
 	// Check status after getting item
-	queued, processing, completed, errors, err = statusStorage.GetQueueStatus()
+	pending, processing, completed, errors, err = statusStorage.GetQueueStatus()
 	if err != nil {
 		t.Errorf("Failed to get queue status: %v", err)
 	}
-	if queued != 1 || processing != 1 {
-		t.Errorf("Expected queued=1, processing=1, got queued=%d, processing=%d", queued, processing)
+	if pending != 1 || processing != 1 {
+		t.Errorf("Expected pending=1, processing=1, got pending=%d, processing=%d", pending, processing)
 	}
 	_ = completed // Ignore for this test
 	_ = errors    // Ignore for this test
@@ -421,12 +421,12 @@ func testQueueStatusTracking(t *testing.T) {
 	}
 
 	// Check final status
-	queued, processing, completed, errors, err = statusStorage.GetQueueStatus()
+	pending, processing, completed, errors, err = statusStorage.GetQueueStatus()
 	if err != nil {
 		t.Errorf("Failed to get queue status: %v", err)
 	}
-	if queued != 1 || processing != 0 {
-		t.Errorf("Expected queued=1, processing=0, got queued=%d, processing=%d", queued, processing)
+	if pending != 1 || processing != 0 {
+		t.Errorf("Expected pending=1, processing=0, got pending=%d, processing=%d", pending, processing)
 	}
 	_ = completed // Ignore for this test
 	_ = errors    // Ignore for this test
@@ -677,11 +677,11 @@ func testGetURLStatus(t *testing.T) {
 		t.Errorf("Failed to add URL to queue: %v", err)
 	}
 
-	// Check status - should be "queued"
+	// Check status - should be "pending"
 	status, exists = statusStorage.GetURLStatus(testURL)
 	_ = exists // We're not testing the exists flag in these cases
-	if status != "queued" {
-		t.Errorf("Expected status 'queued', got '%s'", status)
+	if status != "pending" {
+		t.Errorf("Expected status 'pending', got '%s'", status)
 	}
 
 	// Get item and update status
@@ -757,13 +757,13 @@ func testHasQueuedItems(t *testing.T) {
 		return
 	}
 
-	// Should still have items (one processing, one queued)
+	// Should still have items (one processing, one pending)
 	hasItems, err = queueStorage.HasQueuedItems()
 	if err != nil {
 		t.Errorf("Failed to check queued items: %v", err)
 	}
 	if !hasItems {
-		t.Errorf("Expected queued items (processing + queued), but HasQueuedItems returned false")
+		t.Errorf("Expected queued items (processing + pending), but HasQueuedItems returned false")
 	}
 
 	// Complete the processing item
@@ -772,13 +772,13 @@ func testHasQueuedItems(t *testing.T) {
 		t.Errorf("Failed to complete item: %v", err)
 	}
 
-	// Should still have one queued item
+	// Should still have one pending item
 	hasItems, err = queueStorage.HasQueuedItems()
 	if err != nil {
 		t.Errorf("Failed to check queued items: %v", err)
 	}
 	if !hasItems {
-		t.Errorf("Expected one queued item remaining, but HasQueuedItems returned false")
+		t.Errorf("Expected one pending item remaining, but HasQueuedItems returned false")
 	}
 
 	// Get and complete the remaining item
@@ -1064,7 +1064,7 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 	}
 
 	// Verify final queue state
-	queued, processing, completed, _, err := storage.GetQueueStatus()
+	pending, processing, completed, _, err := storage.GetQueueStatus()
 	if err != nil {
 		t.Errorf("Failed to get final queue status: %v", err)
 	}
@@ -1073,6 +1073,6 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 		t.Errorf("Expected no processing items after completion, got %d", processing)
 	}
 
-	t.Logf("Concurrent queue test completed: queued=%d, processing=%d, completed=%d, processed=%d",
-		queued, processing, completed, finalProcessedCount)
+	t.Logf("Concurrent queue test completed: pending=%d, processing=%d, completed=%d, processed=%d",
+		pending, processing, completed, finalProcessedCount)
 }

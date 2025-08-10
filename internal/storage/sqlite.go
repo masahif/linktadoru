@@ -73,7 +73,7 @@ func (s *SQLiteStorage) Close() error {
 	return s.db.Close()
 }
 
-// AddToQueue adds URLs to the queue (pages table with status='queued')
+// AddToQueue adds URLs to the queue (pages table with status='pending')
 // Uses INSERT OR IGNORE to prevent duplicates
 func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	if len(urls) == 0 {
@@ -88,7 +88,7 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO pages (url, status, added_at) 
-		VALUES (?, 'queued', ?)
+		VALUES (?, 'pending', ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -119,10 +119,10 @@ func (s *SQLiteStorage) GetNextFromQueue() (*crawler.URLItem, error) {
 		SET status = 'processing', processing_started_at = ? 
 		WHERE id = (
 			SELECT id FROM pages 
-			WHERE status = 'queued' 
+			WHERE status = 'pending' 
 			ORDER BY added_at ASC 
 			LIMIT 1
-		) AND status = 'queued'
+		) AND status = 'pending'
 		RETURNING id, url
 	`, time.Now()).Scan(&item.ID, &item.URL)
 
@@ -215,6 +215,22 @@ func (s *SQLiteStorage) SavePageError(id int, errorType, errorMessage string) er
 	return nil
 }
 
+// SavePageSkipped marks a page as skipped (e.g., robots.txt disallow)
+func (s *SQLiteStorage) SavePageSkipped(id int, reason, message string) error {
+	_, err := s.db.Exec(`
+		UPDATE pages SET 
+			status = 'skipped',
+			last_error_type = ?,
+			last_error_message = ?
+		WHERE id = ?
+	`, reason, message, id)
+
+	if err != nil {
+		return fmt.Errorf("failed to save page as skipped: %w", err)
+	}
+	return nil
+}
+
 // SaveLink saves a single link relationship using page IDs
 func (s *SQLiteStorage) SaveLink(link *crawler.LinkData) error {
 	// Get or create page IDs for source and target URLs
@@ -284,7 +300,7 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 
 		// Create page if it doesn't exist
 		result, err := tx.Exec(
-			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'queued', ?)",
+			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'pending', ?)",
 			url, time.Now(),
 		)
 		if err != nil {
@@ -366,38 +382,92 @@ func (s *SQLiteStorage) SaveError(crawlErr *crawler.CrawlError) error {
 }
 
 // GetQueueStatus returns counts by status
-func (s *SQLiteStorage) GetQueueStatus() (queued int, processing int, completed int, errors int, err error) {
+func (s *SQLiteStorage) GetQueueStatus() (pending int, processing int, completed int, errors int, err error) {
 	query := `
 		SELECT 
-			SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) as queued,
+			SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
 			SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
 			SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
 			SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
 		FROM pages
 	`
 
-	err = s.db.QueryRow(query).Scan(&queued, &processing, &completed, &errors)
+	err = s.db.QueryRow(query).Scan(&pending, &processing, &completed, &errors)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("failed to get queue status: %w", err)
 	}
 
-	return queued, processing, completed, errors, nil
+	return pending, processing, completed, errors, nil
 }
 
-// HasQueuedItems checks if there are any items available for processing (queued or processing status)
+// HasQueuedItems checks if there are any items available for processing (pending or processing status)
 func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	var count int
 	err := s.db.QueryRow(`
 		SELECT COUNT(*) 
 		FROM pages 
-		WHERE status IN ('queued', 'processing')
+		WHERE status IN ('pending', 'processing')
 	`).Scan(&count)
 
 	if err != nil {
-		return false, fmt.Errorf("failed to check queued items: %w", err)
+		return false, fmt.Errorf("failed to check pending items: %w", err)
 	}
 
 	return count > 0, nil
+}
+
+// GetRetryablePages returns pages with error status that can be retried
+func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
+	rows, err := s.db.Query(`
+		SELECT id, url, retry_count, last_error_type 
+		FROM pages 
+		WHERE status = 'error' 
+		  AND retry_count < ? 
+		  AND last_error_type IN ('network_timeout', 'connection_refused', 'dns_resolution_failed', 'server_error_5xx')
+		ORDER BY retry_count ASC, added_at ASC
+	`, maxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get retryable pages: %w", err)
+	}
+	defer rows.Close()
+
+	var items []crawler.URLItem
+	for rows.Next() {
+		var item crawler.URLItem
+		var errorType string
+		var retryCount int
+		if err := rows.Scan(&item.ID, &item.URL, &retryCount, &errorType); err != nil {
+			return nil, fmt.Errorf("failed to scan retryable page: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate retryable pages: %w", err)
+	}
+
+	return items, nil
+}
+
+// RequeueErrorPages moves error status pages back to pending for retry
+func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	result, err := s.db.Exec(`
+		UPDATE pages 
+		SET status = 'pending', processing_started_at = NULL 
+		WHERE status = 'error' 
+		  AND retry_count < ? 
+		  AND last_error_type IN ('network_timeout', 'connection_refused', 'dns_resolution_failed', 'server_error_5xx')
+	`, maxRetries)
+	if err != nil {
+		return 0, fmt.Errorf("failed to requeue error pages: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	return int(rowsAffected), nil
 }
 
 // GetProcessingItems returns currently processing items
@@ -438,7 +508,7 @@ func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
 
 	_, err := s.db.Exec(`
 		UPDATE pages 
-		SET status = 'queued', processing_started_at = NULL 
+		SET status = 'pending', processing_started_at = NULL 
 		WHERE status = 'processing' 
 		AND processing_started_at < ?
 	`, cutoff)
@@ -501,7 +571,7 @@ func (s *SQLiteStorage) getOrCreatePageID(url string) (int, error) {
 
 	// Page doesn't exist, create it with 'queued' status
 	result, err := s.db.Exec(
-		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'queued', ?)",
+		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'pending', ?)",
 		url, time.Now(),
 	)
 	if err != nil {

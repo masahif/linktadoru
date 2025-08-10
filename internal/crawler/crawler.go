@@ -208,9 +208,63 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 
 	select {
 	case <-done:
-		slog.Info("Crawling completed")
+		slog.Info("Crawling completed - checking for retries")
+		// After normal crawling completes, attempt retries
+		if err := c.performRetries(); err != nil {
+			slog.Error("Error during retry processing", "error", err)
+		}
 	case <-c.ctx.Done():
 		slog.Info("Crawling cancelled")
+	}
+
+	return nil
+}
+
+// performRetries handles retry logic for error status pages
+func (c *DefaultCrawler) performRetries() error {
+	const maxRetries = 3
+
+	retryablePages, err := c.storage.GetRetryablePages(maxRetries)
+	if err != nil {
+		return fmt.Errorf("failed to get retryable pages: %w", err)
+	}
+
+	if len(retryablePages) == 0 {
+		slog.Info("No pages available for retry")
+		return nil
+	}
+
+	slog.Info("Found pages for retry", "count", len(retryablePages))
+
+	// Requeue error pages back to pending status
+	requeued, err := c.storage.RequeueErrorPages(maxRetries)
+	if err != nil {
+		return fmt.Errorf("failed to requeue error pages: %w", err)
+	}
+
+	if requeued > 0 {
+		slog.Info("Requeued error pages for retry", "count", requeued)
+
+		// Check if we have items to process after requeueing
+		hasItems, err := c.storage.HasQueuedItems()
+		if err != nil {
+			return fmt.Errorf("failed to check queued items: %w", err)
+		}
+
+		if hasItems {
+			slog.Info("Starting retry processing")
+			// Start workers again for retry processing
+			c.wg = sync.WaitGroup{} // Reset wait group
+			c.activeWorkers = c.config.Concurrency
+			for i := 0; i < c.config.Concurrency; i++ {
+				c.wg.Add(1)
+				go c.worker(i)
+			}
+
+			// Wait for retry completion
+			c.wg.Wait()
+			slog.Info("Retry processing completed")
+		}
 	}
 
 	return nil
@@ -348,8 +402,8 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 	}
 	if !allowed {
 		slog.Info("URL disallowed by robots.txt", "worker_id", id, "url", item.URL)
-		if err := c.storage.SavePageError(item.ID, "robots_disallowed", "Disallowed by robots.txt"); err != nil {
-			slog.Error("Worker failed to save robots error", "worker_id", id, "error", err)
+		if err := c.storage.SavePageSkipped(item.ID, "robots_txt_disallow", "Disallowed by robots.txt"); err != nil {
+			slog.Error("Worker failed to save robots skip", "worker_id", id, "error", err)
 		}
 		c.workerSleep()
 		return false
@@ -442,14 +496,14 @@ func (c *DefaultCrawler) statsReporter() {
 			return
 		case <-ticker.C:
 			// Get real-time queue status from database
-			queued, processing, completed, errors, err := c.storage.GetQueueStatus()
+			pending, processing, completed, errors, err := c.storage.GetQueueStatus()
 			if err != nil {
 				slog.Error("Failed to get queue status", "error", err)
 				continue
 			}
 
 			stats := c.GetStats()
-			slog.Info("Crawling stats", "crawled", stats.PagesCrawled, "queued", queued, "processing", processing, "completed", completed, "errors", errors, "duration", stats.Duration)
+			slog.Info("Crawling stats", "crawled", stats.PagesCrawled, "pending", pending, "processing", processing, "completed", completed, "errors", errors, "duration", stats.Duration)
 		}
 	}
 }
