@@ -13,7 +13,8 @@ import (
 
 // HTMLParser extracts metadata and links from HTML
 type HTMLParser struct {
-	baseURL *url.URL
+	baseURL        *url.URL
+	allowedSchemes []string
 }
 
 // ParseResult contains the parsed HTML data
@@ -34,15 +35,25 @@ type Link struct {
 	IsExternal   bool
 }
 
-// NewHTMLParser creates a new HTML parser
+// NewHTMLParser creates a new HTML parser with default allowed schemes
 func NewHTMLParser(baseURL string) (*HTMLParser, error) {
+	return NewHTMLParserWithSchemes(baseURL, []string{"https://", "http://"})
+}
+
+// NewHTMLParserWithSchemes creates a new HTML parser with custom allowed schemes
+func NewHTMLParserWithSchemes(baseURL string, allowedSchemes []string) (*HTMLParser, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
+	if len(allowedSchemes) == 0 {
+		allowedSchemes = []string{"https://", "http://"}
+	}
+
 	return &HTMLParser{
-		baseURL: parsedURL,
+		baseURL:        parsedURL,
+		allowedSchemes: allowedSchemes,
 	}, nil
 }
 
@@ -155,12 +166,22 @@ func (p *HTMLParser) parseAnchor(n *html.Node, result *ParseResult) {
 		return
 	}
 
+	// Early scheme validation before URL resolution
+	if !p.isAllowedScheme(href) {
+		return
+	}
+
 	// Extract anchor text
 	anchorText := p.extractText(n)
 
 	// Resolve relative URL
 	absURL, err := p.resolveURL(href)
 	if err != nil {
+		return
+	}
+
+	// Validate resolved URL scheme
+	if !p.isAllowedScheme(absURL) {
 		return
 	}
 
@@ -209,4 +230,33 @@ func (p *HTMLParser) extractText(n *html.Node) string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// isAllowedScheme checks if the URL has an allowed scheme
+func (p *HTMLParser) isAllowedScheme(href string) bool {
+	// Check for absolute URLs with schemes
+	if strings.Contains(href, "://") {
+		// Check against allowed schemes
+		for _, scheme := range p.allowedSchemes {
+			if strings.HasPrefix(href, scheme) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Check for other protocol schemes like tel:, mailto:, javascript: without ://
+	if strings.Contains(href, ":") && !strings.HasPrefix(href, "/") && !strings.HasPrefix(href, "?") && !strings.HasPrefix(href, "#") {
+		// This is likely a scheme-based URL like tel:, mailto:, javascript:
+		// Only allow if it matches our allowed schemes (unlikely for these cases)
+		for _, scheme := range p.allowedSchemes {
+			if strings.HasPrefix(href, strings.TrimSuffix(scheme, "://")) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// For relative URLs (no scheme), they're allowed (will be resolved to base URL's scheme)
+	return true
 }
