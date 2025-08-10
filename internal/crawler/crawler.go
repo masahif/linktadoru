@@ -94,7 +94,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	}
 
 	// Initialize components
-	processor := NewPageProcessorWithSchemes(httpClient, config.AllowedSchemes)
+	processor := NewPageProcessorWithConfig(httpClient, config.AllowedSchemes, config.FollowExternalHosts)
 	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
 	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobotsTxt)
 

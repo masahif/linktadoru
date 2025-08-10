@@ -12,9 +12,9 @@ import (
 
 // RobotsParser handles robots.txt parsing and rule checking
 type RobotsParser struct {
-	httpClient   *HTTPClient
-	rules        map[string]*RobotRules
-	mu           sync.RWMutex
+	httpClient      *HTTPClient
+	rules           map[string]*RobotRules
+	mu              sync.RWMutex
 	ignoreRobotsTxt bool
 }
 
@@ -29,8 +29,8 @@ type RobotRules struct {
 // NewRobotsParser creates a new robots.txt parser
 func NewRobotsParser(httpClient *HTTPClient, ignoreRobotsTxt bool) *RobotsParser {
 	return &RobotsParser{
-		httpClient:   httpClient,
-		rules:        make(map[string]*RobotRules),
+		httpClient:      httpClient,
+		rules:           make(map[string]*RobotRules),
 		ignoreRobotsTxt: ignoreRobotsTxt,
 	}
 }

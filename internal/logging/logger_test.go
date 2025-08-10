@@ -21,7 +21,7 @@ func TestParseLevel(t *testing.T) {
 		{"uppercase DEBUG", "DEBUG", slog.LevelDebug},
 		{"mixed case Info", "Info", slog.LevelInfo},
 		{"invalid level", "invalid", slog.LevelInfo}, // defaults to info
-		{"empty string", "", slog.LevelInfo},          // defaults to info
+		{"empty string", "", slog.LevelInfo},         // defaults to info
 	}
 
 	for _, tt := range tests {
@@ -91,7 +91,7 @@ func TestNewLogger(t *testing.T) {
 
 		// Test that log file is created
 		logger.Info("test message")
-		
+
 		if _, err := os.Stat(logFile); os.IsNotExist(err) {
 			t.Errorf("Log file was not created at %s", logFile)
 		}
