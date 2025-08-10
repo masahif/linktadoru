@@ -11,8 +11,9 @@ import (
 
 // DefaultPageProcessor implements the PageProcessor interface
 type DefaultPageProcessor struct {
-	httpClient     *HTTPClient
-	allowedSchemes []string
+	httpClient             *HTTPClient
+	allowedSchemes         []string
+	saveExternalLinks      bool
 }
 
 // NewPageProcessor creates a new page processor with default schemes
@@ -22,9 +23,15 @@ func NewPageProcessor(httpClient *HTTPClient) PageProcessor {
 
 // NewPageProcessorWithSchemes creates a new page processor with custom allowed schemes
 func NewPageProcessorWithSchemes(httpClient *HTTPClient, allowedSchemes []string) PageProcessor {
+	return NewPageProcessorWithConfig(httpClient, allowedSchemes, true) // Default: save external links
+}
+
+// NewPageProcessorWithConfig creates a new page processor with full configuration
+func NewPageProcessorWithConfig(httpClient *HTTPClient, allowedSchemes []string, saveExternalLinks bool) PageProcessor {
 	return &DefaultPageProcessor{
-		httpClient:     httpClient,
-		allowedSchemes: allowedSchemes,
+		httpClient:        httpClient,
+		allowedSchemes:    allowedSchemes,
+		saveExternalLinks: saveExternalLinks,
 	}
 }
 
@@ -105,6 +112,12 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 		linkType := "internal"
 		if link.IsExternal {
 			linkType = "external"
+		}
+
+		// Skip external links if saveExternalLinks is false
+		if linkType == "external" && !p.saveExternalLinks {
+			slog.Debug("Skipping external link", "source", resp.FinalURL, "target", link.URL)
+			continue
 		}
 
 		linkData := &LinkData{
