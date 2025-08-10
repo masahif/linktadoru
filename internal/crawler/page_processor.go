@@ -11,13 +11,20 @@ import (
 
 // DefaultPageProcessor implements the PageProcessor interface
 type DefaultPageProcessor struct {
-	httpClient *HTTPClient
+	httpClient     *HTTPClient
+	allowedSchemes []string
 }
 
-// NewPageProcessor creates a new page processor
+// NewPageProcessor creates a new page processor with default schemes
 func NewPageProcessor(httpClient *HTTPClient) PageProcessor {
+	return NewPageProcessorWithSchemes(httpClient, []string{"https://", "http://"})
+}
+
+// NewPageProcessorWithSchemes creates a new page processor with custom allowed schemes
+func NewPageProcessorWithSchemes(httpClient *HTTPClient, allowedSchemes []string) PageProcessor {
 	return &DefaultPageProcessor{
-		httpClient: httpClient,
+		httpClient:     httpClient,
+		allowedSchemes: allowedSchemes,
 	}
 }
 
@@ -74,8 +81,8 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 		return result, nil
 	}
 
-	// Parse HTML
-	htmlParser, err := parser.NewHTMLParser(resp.FinalURL)
+	// Parse HTML with configured allowed schemes
+	htmlParser, err := parser.NewHTMLParserWithSchemes(resp.FinalURL, p.allowedSchemes)
 	if err != nil {
 		return result, nil
 	}

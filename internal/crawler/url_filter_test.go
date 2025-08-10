@@ -389,3 +389,223 @@ func TestShouldCrawlURLWithHostFiltering(t *testing.T) {
 		})
 	}
 }
+
+func TestIsAllowedHostWithPrefixMatching(t *testing.T) {
+	tests := []struct {
+		name         string
+		seedURLs     []string
+		targetURL    string
+		expected     bool
+		description  string
+	}{
+		{
+			name:        "Exact match with seed URL",
+			seedURLs:    []string{"https://example.com/abc/def"},
+			targetURL:   "https://example.com/abc/def",
+			expected:    true,
+			description: "URL exactly matches seed URL",
+		},
+		{
+			name:        "Prefix match with trailing path",
+			seedURLs:    []string{"https://example.com/abc/def"},
+			targetURL:   "https://example.com/abc/def/ghi",
+			expected:    true,
+			description: "URL starts with seed URL prefix followed by path",
+		},
+		{
+			name:        "Prefix match without trailing slash",
+			seedURLs:    []string{"https://example.com/abc"},
+			targetURL:   "https://example.com/abc/def",
+			expected:    true,
+			description: "URL starts with seed URL prefix",
+		},
+		{
+			name:        "Same host but different path prefix",
+			seedURLs:    []string{"https://example.com/abc/def"},
+			targetURL:   "https://example.com/xyz/def",
+			expected:    true,
+			description: "Same host allows all paths with current implementation",
+		},
+		{
+			name:        "Same host different path allowed",
+			seedURLs:    []string{"https://example.com/abc"},
+			targetURL:   "https://example.com/abcdef",
+			expected:    true,
+			description: "Same host allows all paths with current implementation",
+		},
+		{
+			name:        "Root path allows all subpaths",
+			seedURLs:    []string{"https://example.com"},
+			targetURL:   "https://example.com/any/path",
+			expected:    true,
+			description: "Root path seed URL allows any subpath",
+		},
+		{
+			name:        "Multiple seeds - one matches",
+			seedURLs:    []string{"https://example.com/blog", "https://other.com/news"},
+			targetURL:   "https://example.com/blog/post1",
+			expected:    true,
+			description: "URL matches one of multiple seed URL prefixes",
+		},
+		{
+			name:        "Different scheme should not match",
+			seedURLs:    []string{"https://example.com/abc"},
+			targetURL:   "http://example.com/abc/def",
+			expected:    false,
+			description: "Different scheme should not match even with same host and path",
+		},
+		{
+			name:        "Invalid URL scheme filtered out",
+			seedURLs:    []string{"https://example.com"},
+			targetURL:   "tel:+1234567890",
+			expected:    false,
+			description: "Invalid URL schemes should be filtered out by isAllowedScheme",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create configuration similar to NewCrawler
+			config := &config.CrawlConfig{
+				SeedURLs:            tt.seedURLs,
+				FollowExternalHosts: false, // Test same-host restriction
+				AllowedSchemes:      []string{"https://", "http://"},
+			}
+
+			// Extract allowed hosts like NewCrawler does (scheme://host format)
+			allowedHosts := make([]string, 0, len(config.SeedURLs))
+			for _, seedURL := range config.SeedURLs {
+				if parsedURL, err := url.Parse(seedURL); err == nil {
+					host := parsedURL.Scheme + "://" + parsedURL.Host
+					// Avoid duplicates
+					found := false
+					for _, existing := range allowedHosts {
+						if existing == host {
+							found = true
+							break
+						}
+					}
+					if !found {
+						allowedHosts = append(allowedHosts, host)
+					}
+				}
+			}
+
+			crawler := &DefaultCrawler{
+				config:       config,
+				allowedHosts: allowedHosts,
+			}
+
+			result := crawler.isAllowedHost(tt.targetURL)
+			if result != tt.expected {
+				t.Errorf("%s: isAllowedHost(%q) = %v, expected %v. %s", 
+					tt.name, tt.targetURL, result, tt.expected, tt.description)
+			}
+		})
+	}
+}
+
+func TestConfigAllowedSchemes(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedSchemes []string
+		targetURL      string
+		expected       bool
+		description    string
+	}{
+		{
+			name:           "HTTPS allowed by default",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "https://example.com/page",
+			expected:       true,
+			description:    "HTTPS URLs should be allowed with default scheme configuration",
+		},
+		{
+			name:           "HTTP allowed by default", 
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "http://example.com/page",
+			expected:       true,
+			description:    "HTTP URLs should be allowed with default scheme configuration",
+		},
+		{
+			name:           "FTP blocked by default",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "ftp://ftp.example.com/file.txt",
+			expected:       false,
+			description:    "FTP URLs should be blocked with default scheme configuration",
+		},
+		{
+			name:           "Custom schemes - FTP allowed",
+			allowedSchemes: []string{"https://", "http://", "ftp://"},
+			targetURL:      "ftp://ftp.example.com/file.txt",
+			expected:       true,
+			description:    "FTP URLs should be allowed when explicitly configured",
+		},
+		{
+			name:           "Tel scheme blocked",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "tel:+1234567890",
+			expected:       false,
+			description:    "Tel URLs should always be blocked",
+		},
+		{
+			name:           "Mailto scheme blocked",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "mailto:test@example.com",
+			expected:       false,
+			description:    "Mailto URLs should always be blocked",
+		},
+		{
+			name:           "JavaScript scheme blocked",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "javascript:alert('test')",
+			expected:       false,
+			description:    "JavaScript URLs should always be blocked",
+		},
+		{
+			name:           "Chrome extension scheme blocked",
+			allowedSchemes: []string{"https://", "http://"},
+			targetURL:      "chrome-extension://abc123/popup.html",
+			expected:       false,
+			description:    "Chrome extension URLs should always be blocked",
+		},
+		{
+			name:           "Empty scheme list defaults to HTTP/HTTPS",
+			allowedSchemes: []string{}, // Should fall back to defaults
+			targetURL:      "https://example.com/page",
+			expected:       true,
+			description:    "Empty scheme list should default to allowing HTTPS",
+		},
+		{
+			name:           "HTTPS only configuration",
+			allowedSchemes: []string{"https://"},
+			targetURL:      "http://example.com/page",
+			expected:       false,
+			description:    "HTTP should be blocked when only HTTPS is allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create configuration with custom allowed schemes
+			config := &config.CrawlConfig{
+				SeedURLs:            []string{"https://example.com"},
+				FollowExternalHosts: true, // Allow external to focus on scheme testing
+				AllowedSchemes:      tt.allowedSchemes,
+			}
+
+			allowedHosts := []string{"https://example.com"}
+
+			crawler := &DefaultCrawler{
+				config:       config,
+				allowedHosts: allowedHosts,
+			}
+
+			result := crawler.isAllowedScheme(tt.targetURL)
+			if result != tt.expected {
+				t.Errorf("%s: isAllowedScheme(%q) with schemes %v = %v, expected %v. %s",
+					tt.name, tt.targetURL, tt.allowedSchemes, result, tt.expected, tt.description)
+			}
+		})
+	}
+}

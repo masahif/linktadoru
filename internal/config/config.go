@@ -67,6 +67,7 @@ type CrawlConfig struct {
 	// URL filtering
 	IncludePatterns []string `mapstructure:"include_patterns" yaml:"include_patterns"` // Regex patterns for URLs to include
 	ExcludePatterns []string `mapstructure:"exclude_patterns" yaml:"exclude_patterns"` // Regex patterns for URLs to exclude
+	AllowedSchemes  []string `mapstructure:"allowed_schemes" yaml:"allowed_schemes"`   // Allowed URL schemes (e.g., https://, http://)
 
 	// HTTP Headers
 	Headers []string `mapstructure:"headers" yaml:"headers"` // Custom HTTP headers
@@ -93,6 +94,7 @@ func DefaultConfig() *CrawlConfig {
 		FollowExternalHosts: false, // Default to same-host only for safety
 		Limit:               0,     // unlimited
 		DatabasePath:        "./linktadoru.db",
+		AllowedSchemes:      []string{"https://", "http://"}, // Default allowed URL schemes
 		// Logging defaults
 		LogLevel:      "info",
 		LogFile:       "",    // Empty means no file logging by default

@@ -133,3 +133,134 @@ func TestHTMLParserEmptyContent(t *testing.T) {
 		t.Error("Expected empty results for empty HTML")
 	}
 }
+
+func TestHTMLParserSchemeFiltering(t *testing.T) {
+	tests := []struct {
+		name            string
+		baseURL         string
+		allowedSchemes  []string
+		htmlContent     string
+		expectedLinks   int
+		expectedURLs    []string
+	}{
+		{
+			name:           "Filter tel and mailto links",
+			baseURL:        "https://example.com",
+			allowedSchemes: []string{"https://", "http://"},
+			htmlContent: `<html><body>
+				<a href="tel:1234567890">Call</a>
+				<a href="mailto:test@example.com">Email</a>
+				<a href="https://example.com/page">Valid Link</a>
+				<a href="http://example.com/page2">HTTP Link</a>
+			</body></html>`,
+			expectedLinks: 2,
+			expectedURLs:  []string{"https://example.com/page", "http://example.com/page2"},
+		},
+		{
+			name:           "Filter chrome-extension links",
+			baseURL:        "https://example.com",
+			allowedSchemes: []string{"https://", "http://"},
+			htmlContent: `<html><body>
+				<a href="chrome-extension://abc123/popup.html">Extension</a>
+				<a href="https://example.com/page">Valid Link</a>
+				<a href="ftp://ftp.example.com/file.txt">FTP Link</a>
+			</body></html>`,
+			expectedLinks: 1,
+			expectedURLs:  []string{"https://example.com/page"},
+		},
+		{
+			name:           "Allow custom schemes when configured",
+			baseURL:        "https://example.com",
+			allowedSchemes: []string{"https://", "http://", "ftp://"},
+			htmlContent: `<html><body>
+				<a href="ftp://ftp.example.com/file.txt">FTP Link</a>
+				<a href="https://example.com/page">HTTPS Link</a>
+				<a href="tel:1234567890">Tel Link</a>
+			</body></html>`,
+			expectedLinks: 2,
+			expectedURLs:  []string{"ftp://ftp.example.com/file.txt", "https://example.com/page"},
+		},
+		{
+			name:           "Relative links are always allowed",
+			baseURL:        "https://example.com",
+			allowedSchemes: []string{"https://"},
+			htmlContent: `<html><body>
+				<a href="/relative/path">Relative Link</a>
+				<a href="http://other.com/page">HTTP Link</a>
+				<a href="mailto:test@example.com">Email</a>
+			</body></html>`,
+			expectedLinks: 1,
+			expectedURLs:  []string{"https://example.com/relative/path"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser, err := NewHTMLParserWithSchemes(tt.baseURL, tt.allowedSchemes)
+			if err != nil {
+				t.Fatalf("Failed to create parser: %v", err)
+			}
+
+			result, err := parser.Parse([]byte(tt.htmlContent))
+			if err != nil {
+				t.Fatalf("Failed to parse HTML: %v", err)
+			}
+
+			if len(result.Links) != tt.expectedLinks {
+				t.Errorf("Expected %d links, got %d", tt.expectedLinks, len(result.Links))
+			}
+
+			// Verify expected URLs are present
+			actualURLs := make([]string, len(result.Links))
+			for i, link := range result.Links {
+				actualURLs[i] = link.URL
+			}
+
+			for _, expectedURL := range tt.expectedURLs {
+				found := false
+				for _, actualURL := range actualURLs {
+					if actualURL == expectedURL {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected URL %s not found in results: %v", expectedURL, actualURLs)
+				}
+			}
+		})
+	}
+}
+
+func TestIsAllowedScheme(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedSchemes []string
+		href           string
+		expected       bool
+	}{
+		{"HTTPS allowed", []string{"https://", "http://"}, "https://example.com", true},
+		{"HTTP allowed", []string{"https://", "http://"}, "http://example.com", true},
+		{"Tel blocked", []string{"https://", "http://"}, "tel:1234567890", false},
+		{"Mailto blocked", []string{"https://", "http://"}, "mailto:test@example.com", false},
+		{"Chrome extension blocked", []string{"https://", "http://"}, "chrome-extension://abc123/popup.html", false},
+		{"FTP blocked by default", []string{"https://", "http://"}, "ftp://ftp.example.com", false},
+		{"FTP allowed when configured", []string{"https://", "http://", "ftp://"}, "ftp://ftp.example.com", true},
+		{"Relative URL allowed", []string{"https://", "http://"}, "/relative/path", true},
+		{"Relative URL with query allowed", []string{"https://", "http://"}, "/path?query=1", true},
+		{"JavaScript blocked", []string{"https://", "http://"}, "javascript:alert('hi')", false},
+	}
+
+	parser := &HTMLParser{allowedSchemes: []string{"https://", "http://"}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Update parser schemes for test
+			parser.allowedSchemes = tt.allowedSchemes
+			result := parser.isAllowedScheme(tt.href)
+			if result != tt.expected {
+				t.Errorf("isAllowedScheme(%q) = %v, expected %v", tt.href, result, tt.expected)
+			}
+		})
+	}
+}

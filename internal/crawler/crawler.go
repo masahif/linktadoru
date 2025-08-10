@@ -94,7 +94,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	}
 
 	// Initialize components
-	processor := NewPageProcessor(httpClient)
+	processor := NewPageProcessorWithSchemes(httpClient, config.AllowedSchemes)
 	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
 	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobotsTxt)
 
@@ -135,21 +135,37 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 // isAllowedHost checks if the given URL's host is allowed for crawling
 func (c *DefaultCrawler) isAllowedHost(targetURL string) bool {
-	// If external hosts are allowed, accept any host
+	// First check if URL has an allowed scheme
+	if !c.isAllowedScheme(targetURL) {
+		return false
+	}
+
+	// If external hosts are allowed, accept any valid scheme
 	if c.config.FollowExternalHosts {
 		return true
 	}
 
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil {
-		return false
+	// Check if URL starts with any allowed host prefix
+	for _, allowedHost := range c.allowedHosts {
+		// Allow exact match or prefix with trailing slash
+		if targetURL == allowedHost || strings.HasPrefix(targetURL, allowedHost+"/") {
+			return true
+		}
 	}
 
-	targetHost := parsedURL.Scheme + "://" + parsedURL.Host
+	return false
+}
 
-	// Check if the target host matches any of the allowed hosts
-	for _, allowedHost := range c.allowedHosts {
-		if targetHost == allowedHost {
+// isAllowedScheme checks if the URL has an allowed scheme
+func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
+	// Use configured allowed schemes, fallback to defaults if empty
+	allowedSchemes := c.config.AllowedSchemes
+	if len(allowedSchemes) == 0 {
+		allowedSchemes = []string{"https://", "http://"}
+	}
+
+	for _, scheme := range allowedSchemes {
+		if strings.HasPrefix(targetURL, scheme) {
 			return true
 		}
 	}
