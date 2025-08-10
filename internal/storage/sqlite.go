@@ -273,7 +273,7 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 	}
 
 	// Process links in smaller batches to avoid memory pressure and long transactions
-	const batchSize = 50
+	const batchSize = 100
 	for i := 0; i < len(links); i += batchSize {
 		end := i + batchSize
 		if end > len(links) {
