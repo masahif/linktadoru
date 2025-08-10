@@ -136,12 +136,12 @@ func TestHTMLParserEmptyContent(t *testing.T) {
 
 func TestHTMLParserSchemeFiltering(t *testing.T) {
 	tests := []struct {
-		name            string
-		baseURL         string
-		allowedSchemes  []string
-		htmlContent     string
-		expectedLinks   int
-		expectedURLs    []string
+		name           string
+		baseURL        string
+		allowedSchemes []string
+		htmlContent    string
+		expectedLinks  int
+		expectedURLs   []string
 	}{
 		{
 			name:           "Filter tel and mailto links",

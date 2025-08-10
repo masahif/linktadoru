@@ -143,11 +143,11 @@ func TestShouldCrawlURL(t *testing.T) {
 
 func TestIsAllowedHost(t *testing.T) {
 	tests := []struct {
-		name             string
-		seedURLs         []string
-		followExternal   bool
-		targetURL        string
-		expected         bool
+		name           string
+		seedURLs       []string
+		followExternal bool
+		targetURL      string
+		expected       bool
 	}{
 		{
 			name:           "Same host allowed - exact match",
@@ -284,13 +284,13 @@ func TestIsAllowedHost(t *testing.T) {
 
 func TestShouldCrawlURLWithHostFiltering(t *testing.T) {
 	tests := []struct {
-		name             string
-		seedURLs         []string
-		followExternal   bool
-		includePatterns  []string
-		excludePatterns  []string
-		targetURL        string
-		expected         bool
+		name            string
+		seedURLs        []string
+		followExternal  bool
+		includePatterns []string
+		excludePatterns []string
+		targetURL       string
+		expected        bool
 	}{
 		{
 			name:            "Same host - no patterns",
@@ -392,11 +392,11 @@ func TestShouldCrawlURLWithHostFiltering(t *testing.T) {
 
 func TestIsAllowedHostWithPrefixMatching(t *testing.T) {
 	tests := []struct {
-		name         string
-		seedURLs     []string
-		targetURL    string
-		expected     bool
-		description  string
+		name        string
+		seedURLs    []string
+		targetURL   string
+		expected    bool
+		description string
 	}{
 		{
 			name:        "Exact match with seed URL",
@@ -498,7 +498,7 @@ func TestIsAllowedHostWithPrefixMatching(t *testing.T) {
 
 			result := crawler.isAllowedHost(tt.targetURL)
 			if result != tt.expected {
-				t.Errorf("%s: isAllowedHost(%q) = %v, expected %v. %s", 
+				t.Errorf("%s: isAllowedHost(%q) = %v, expected %v. %s",
 					tt.name, tt.targetURL, result, tt.expected, tt.description)
 			}
 		})
@@ -521,7 +521,7 @@ func TestConfigAllowedSchemes(t *testing.T) {
 			description:    "HTTPS URLs should be allowed with default scheme configuration",
 		},
 		{
-			name:           "HTTP allowed by default", 
+			name:           "HTTP allowed by default",
 			allowedSchemes: []string{"https://", "http://"},
 			targetURL:      "http://example.com/page",
 			expected:       true,

@@ -32,13 +32,13 @@ func TestStartStop(t *testing.T) {
 	defer server.Close()
 
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{server.URL},
-		Limit:          1,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{server.URL},
+		Limit:           1,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	// Use in-memory storage for testing
@@ -84,13 +84,13 @@ func TestStartWithRealStorage(t *testing.T) {
 	defer server.Close()
 
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{server.URL},
-		Limit:          1,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{server.URL},
+		Limit:           1,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	// Create enhanced mock storage that tracks calls
@@ -193,13 +193,13 @@ func TestWorkerErrorHandling(t *testing.T) {
 	store := &ErrorMockStorage{}
 
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.com"},
-		Limit:          1,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 1 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.com"},
+		Limit:           1,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  1 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	crawler, err := NewCrawler(config, store)
@@ -247,13 +247,13 @@ func (e *ErrorMockStorage) RequeueErrorPages(maxRetries int) (int, error) {
 // TestStatsReporter tests the stats reporting functionality
 func TestStatsReporter(t *testing.T) {
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.test"},
-		Limit:          5,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.test"},
+		Limit:           5,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	store := &MockStorage{}
@@ -295,13 +295,13 @@ func TestMultipleWorkers(t *testing.T) {
 	defer server.Close()
 
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{server.URL, server.URL + "/page2"},
-		Limit:          2,
-		Concurrency:    2,    // Multiple workers
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{server.URL, server.URL + "/page2"},
+		Limit:           2,
+		Concurrency:     2,    // Multiple workers
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	store := &EnhancedMockStorage{}
@@ -327,13 +327,13 @@ func TestMultipleWorkers(t *testing.T) {
 // TestLimitReached tests that crawling stops when limit is reached
 func TestLimitReached(t *testing.T) {
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.test"},
-		Limit:          2, // Small limit
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.test"},
+		Limit:           2, // Small limit
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	// Mock storage that provides items
@@ -424,7 +424,7 @@ func TestSameHostFiltering(t *testing.T) {
 		RequestDelay:        0.01, // 10ms in seconds
 		RequestTimeout:      2 * time.Second,
 		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:        true,
+		IgnoreRobotsTxt:     true,
 		FollowExternalHosts: false, // Default - same host only
 	}
 
@@ -473,7 +473,7 @@ func TestExternalHostsEnabled(t *testing.T) {
 		RequestDelay:        0.01, // 10ms in seconds
 		RequestTimeout:      2 * time.Second,
 		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:        true,
+		IgnoreRobotsTxt:     true,
 		FollowExternalHosts: true, // Enable external hosts
 	}
 

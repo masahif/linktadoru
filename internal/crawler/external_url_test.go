@@ -147,7 +147,6 @@ func TestPageProcessorExternalLinks(t *testing.T) {
 	}
 }
 
-
 // Helper function to check for invalid schemes
 func hasInvalidScheme(url string) bool {
 	invalidSchemes := []string{"tel:", "mailto:", "javascript:", "chrome-extension:"}

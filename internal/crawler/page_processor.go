@@ -11,9 +11,9 @@ import (
 
 // DefaultPageProcessor implements the PageProcessor interface
 type DefaultPageProcessor struct {
-	httpClient             *HTTPClient
-	allowedSchemes         []string
-	saveExternalLinks      bool
+	httpClient        *HTTPClient
+	allowedSchemes    []string
+	saveExternalLinks bool
 }
 
 // NewPageProcessor creates a new page processor with default schemes

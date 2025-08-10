@@ -64,7 +64,7 @@ func (w *RotatingFileWriter) Write(p []byte) (n int, err error) {
 func (w *RotatingFileWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	if w.file != nil {
 		return w.file.Close()
 	}
@@ -94,13 +94,13 @@ func (w *RotatingFileWriter) rotate() error {
 	for i := w.maxBackups - 1; i > 0; i-- {
 		oldPath := w.backupName(i)
 		newPath := w.backupName(i + 1)
-		
+
 		// Remove the oldest backup if it exists
 		if i == w.maxBackups-1 {
 			_ = os.Remove(newPath)
 			continue
 		}
-		
+
 		// Rename backup files
 		if _, err := os.Stat(oldPath); err == nil {
 			if err := os.Rename(oldPath, newPath); err != nil {
@@ -117,7 +117,7 @@ func (w *RotatingFileWriter) rotate() error {
 	if err := w.openFile(); err != nil {
 		return err
 	}
-	
+
 	w.size = 0
 	return nil
 }
@@ -128,7 +128,7 @@ func (w *RotatingFileWriter) backupName(index int) string {
 	base := filepath.Base(w.filePath)
 	ext := filepath.Ext(base)
 	name := base[:len(base)-len(ext)]
-	
+
 	timestamp := time.Now().Format("20060102")
 	return filepath.Join(dir, fmt.Sprintf("%s-%s.%d%s", name, timestamp, index, ext))
 }

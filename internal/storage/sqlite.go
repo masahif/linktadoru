@@ -279,13 +279,13 @@ func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
 		if end > len(links) {
 			end = len(links)
 		}
-		
+
 		batch := links[i:end]
 		if err := s.saveLinksBatch(batch); err != nil {
 			return fmt.Errorf("failed to save links batch %d-%d: %w", i, end-1, err)
 		}
 	}
-	
+
 	return nil
 }
 

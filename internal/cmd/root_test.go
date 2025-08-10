@@ -95,14 +95,14 @@ func TestInitializeCrawler(t *testing.T) {
 	dbPath := filepath.Join(tempDir, "test.db")
 
 	cfg := &config.CrawlConfig{
-		SeedURLs:       []string{"https://example.com"},
-		Concurrency:    5,
-		RequestDelay:   1.0, // 1 second
-		RequestTimeout: 30 * time.Second,
-		UserAgent:      "TestAgent/1.0",
+		SeedURLs:        []string{"https://example.com"},
+		Concurrency:     5,
+		RequestDelay:    1.0, // 1 second
+		RequestTimeout:  30 * time.Second,
+		UserAgent:       "TestAgent/1.0",
 		IgnoreRobotsTxt: false,
-		DatabasePath:   dbPath,
-		Limit:          10,
+		DatabasePath:    dbPath,
+		Limit:           10,
 	}
 
 	crawler, err := initializeCrawler(cfg)

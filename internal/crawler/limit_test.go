@@ -89,13 +89,13 @@ func (m *MockStorage) RequeueErrorPages(maxRetries int) (int, error) {
 func TestLimit(t *testing.T) {
 	// Test that limit configuration is properly set
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.com"},
-		Limit:          5,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.com"},
+		Limit:           5,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	// Create test storage using mock
@@ -148,13 +148,13 @@ func TestLimitLogic(t *testing.T) {
 func TestGetStats(t *testing.T) {
 	// Test the GetStats method
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.com"},
-		Limit:          0,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.com"},
+		Limit:           0,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	store := &MockStorage{}
@@ -201,13 +201,13 @@ func TestGetStats(t *testing.T) {
 func TestIncrementCounters(t *testing.T) {
 	// Test individual counter increment functions
 	config := &config.CrawlConfig{
-		SeedURLs:       []string{"http://example.com"},
-		Limit:          0,
-		Concurrency:    1,
-		RequestDelay:   0.01, // 10ms in seconds
-		RequestTimeout: 5 * time.Second,
-		UserAgent:      "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:   true,
+		SeedURLs:        []string{"http://example.com"},
+		Limit:           0,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  5 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	store := &MockStorage{}

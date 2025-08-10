@@ -52,11 +52,11 @@ type Auth struct {
 // CrawlConfig holds crawler configuration
 type CrawlConfig struct {
 	// Basic crawling parameters
-	SeedURLs       []string      `mapstructure:"seed_urls" yaml:"seed_urls"`             // Starting URLs for crawling
-	Concurrency    int           `mapstructure:"concurrency" yaml:"concurrency"`         // Number of concurrent workers
-	RequestDelay   float64       `mapstructure:"request_delay" yaml:"request_delay"`     // Delay between requests
-	RequestTimeout time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"` // HTTP request timeout
-	UserAgent      string        `mapstructure:"user_agent" yaml:"user_agent"`           // HTTP User-Agent header
+	SeedURLs            []string      `mapstructure:"seed_urls" yaml:"seed_urls"`                         // Starting URLs for crawling
+	Concurrency         int           `mapstructure:"concurrency" yaml:"concurrency"`                     // Number of concurrent workers
+	RequestDelay        float64       `mapstructure:"request_delay" yaml:"request_delay"`                 // Delay between requests
+	RequestTimeout      time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"`             // HTTP request timeout
+	UserAgent           string        `mapstructure:"user_agent" yaml:"user_agent"`                       // HTTP User-Agent header
 	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
 	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
 	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
@@ -76,18 +76,18 @@ type CrawlConfig struct {
 	DatabasePath string `mapstructure:"database_path" yaml:"database_path"` // Path to SQLite database file
 
 	// Logging configuration
-	LogLevel      string `mapstructure:"log_level" yaml:"log_level"`           // Log level (debug, info, warn, error)
-	LogFile       string `mapstructure:"log_file" yaml:"log_file"`             // Path to log file
-	LogMaxSize    int    `mapstructure:"log_max_size" yaml:"log_max_size"`     // Max log file size in MB
+	LogLevel      string `mapstructure:"log_level" yaml:"log_level"`             // Log level (debug, info, warn, error)
+	LogFile       string `mapstructure:"log_file" yaml:"log_file"`               // Path to log file
+	LogMaxSize    int    `mapstructure:"log_max_size" yaml:"log_max_size"`       // Max log file size in MB
 	LogMaxBackups int    `mapstructure:"log_max_backups" yaml:"log_max_backups"` // Number of old log files to keep
-	LogConsole    bool   `mapstructure:"log_console" yaml:"log_console"`       // Enable console output
+	LogConsole    bool   `mapstructure:"log_console" yaml:"log_console"`         // Enable console output
 }
 
 // DefaultConfig returns a configuration with default values
 func DefaultConfig() *CrawlConfig {
 	return &CrawlConfig{
-		Concurrency:         2,     // Reduced from 10 to 2
-		RequestDelay:        0.1,   // 100ms in seconds // Reduced from 1s to 0.1s
+		Concurrency:         2,   // Reduced from 10 to 2
+		RequestDelay:        0.1, // 100ms in seconds // Reduced from 1s to 0.1s
 		RequestTimeout:      30 * time.Second,
 		UserAgent:           "LinkTadoru/1.0",
 		IgnoreRobotsTxt:     false,
@@ -97,10 +97,10 @@ func DefaultConfig() *CrawlConfig {
 		AllowedSchemes:      []string{"https://", "http://"}, // Default allowed URL schemes
 		// Logging defaults
 		LogLevel:      "info",
-		LogFile:       "",    // Empty means no file logging by default
-		LogMaxSize:    100,   // 100MB
+		LogFile:       "",  // Empty means no file logging by default
+		LogMaxSize:    100, // 100MB
 		LogMaxBackups: 5,
-		LogConsole:    true,  // Console output enabled by default
+		LogConsole:    true, // Console output enabled by default
 	}
 }
 

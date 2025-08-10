@@ -175,7 +175,7 @@ func TestRotatingFileWriter_BackupName(t *testing.T) {
 	defer writer.Close()
 
 	backupName := writer.backupName(1)
-	
+
 	// Check that backup name contains the base name and index
 	if !strings.Contains(backupName, "app-") {
 		t.Errorf("Backup name %q doesn't contain base name", backupName)
@@ -183,7 +183,7 @@ func TestRotatingFileWriter_BackupName(t *testing.T) {
 	if !strings.HasSuffix(backupName, ".1.log") {
 		t.Errorf("Backup name %q doesn't have correct suffix", backupName)
 	}
-	
+
 	// Check that it's in the same directory
 	if filepath.Dir(backupName) != tmpDir {
 		t.Errorf("Backup directory = %q, want %q", filepath.Dir(backupName), tmpDir)
