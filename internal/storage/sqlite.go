@@ -43,7 +43,7 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 
 // InitSchema creates the database schema
 func (s *SQLiteStorage) InitSchema() error {
-	// Enable foreign keys and WAL mode for better performance
+	// Enable foreign keys and WAL mode for better concurrent access
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON",
 		"PRAGMA journal_mode = WAL",
@@ -266,8 +266,31 @@ func (s *SQLiteStorage) SaveLink(link *crawler.LinkData) error {
 	return nil
 }
 
-// SaveLinks saves multiple link relationships in a single transaction using page IDs
+// SaveLinks saves multiple links in batches to avoid memory issues and large transactions
 func (s *SQLiteStorage) SaveLinks(links []*crawler.LinkData) error {
+	if len(links) == 0 {
+		return nil
+	}
+
+	// Process links in smaller batches to avoid memory pressure and long transactions
+	const batchSize = 50
+	for i := 0; i < len(links); i += batchSize {
+		end := i + batchSize
+		if end > len(links) {
+			end = len(links)
+		}
+		
+		batch := links[i:end]
+		if err := s.saveLinksBatch(batch); err != nil {
+			return fmt.Errorf("failed to save links batch %d-%d: %w", i, end-1, err)
+		}
+	}
+	
+	return nil
+}
+
+// saveLinksBatch saves a batch of links in a single transaction using page IDs
+func (s *SQLiteStorage) saveLinksBatch(links []*crawler.LinkData) error {
 	if len(links) == 0 {
 		return nil
 	}
