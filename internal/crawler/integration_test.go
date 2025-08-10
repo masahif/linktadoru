@@ -175,6 +175,18 @@ func (e *EnhancedMockStorage) SavePageResult(id int, page *PageData) error {
 	return nil
 }
 
+func (e *EnhancedMockStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
+}
+
+func (e *EnhancedMockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
+	return nil, nil
+}
+
+func (e *EnhancedMockStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	return 0, nil
+}
+
 // TestWorkerErrorHandling tests worker function error scenarios
 func TestWorkerErrorHandling(t *testing.T) {
 	// Create a mock storage that simulates a processing error
@@ -218,6 +230,18 @@ type ErrorMockStorage struct {
 func (e *ErrorMockStorage) GetNextFromQueue() (*URLItem, error) {
 	// Return no items to avoid infinite loop
 	return nil, nil
+}
+
+func (e *ErrorMockStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
+}
+
+func (e *ErrorMockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
+	return nil, nil
+}
+
+func (e *ErrorMockStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	return 0, nil
 }
 
 // TestStatsReporter tests the stats reporting functionality
@@ -355,6 +379,18 @@ func (l *LimitTestStorage) GetNextFromQueue() (*URLItem, error) {
 	return nil, nil
 }
 
+func (l *LimitTestStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
+}
+
+func (l *LimitTestStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
+	return nil, nil
+}
+
+func (l *LimitTestStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	return 0, nil
+}
+
 // TestSameHostFiltering tests that only same-host URLs are crawled by default
 func TestSameHostFiltering(t *testing.T) {
 	// Create two test servers on different ports (different hosts)
@@ -459,4 +495,16 @@ func TestExternalHostsEnabled(t *testing.T) {
 // HostFilteringTestStorage for testing host filtering
 type HostFilteringTestStorage struct {
 	MockStorage
+}
+
+func (h *HostFilteringTestStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
+}
+
+func (h *HostFilteringTestStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
+	return nil, nil
+}
+
+func (h *HostFilteringTestStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	return 0, nil
 }

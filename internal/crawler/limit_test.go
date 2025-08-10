@@ -46,7 +46,7 @@ func (m *MockStorage) SavePageError(id int, errorType, errorMessage string) erro
 	return nil
 }
 
-func (m *MockStorage) GetQueueStatus() (queued int, processing int, completed int, errors int, err error) {
+func (m *MockStorage) GetQueueStatus() (pending int, processing int, completed int, errors int, err error) {
 	return 0, 0, 0, 0, nil
 }
 
@@ -72,6 +72,18 @@ func (m *MockStorage) GetURLStatus(url string) (status string, exists bool) {
 
 func (m *MockStorage) HasQueuedItems() (bool, error) {
 	return false, nil
+}
+
+func (m *MockStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
+}
+
+func (m *MockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) RequeueErrorPages(maxRetries int) (int, error) {
+	return 0, nil
 }
 
 func TestLimit(t *testing.T) {

@@ -2,11 +2,11 @@ package storage
 
 const schemaSQL = `
 -- Pages table now serves as both queue and results storage
--- status column manages the lifecycle: queued -> processing -> completed
+-- status column manages the lifecycle: pending -> processing -> completed/skipped/error
 CREATE TABLE IF NOT EXISTS pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'error')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error')),
     
     -- Queue-related fields
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
