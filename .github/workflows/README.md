@@ -1,51 +1,51 @@
 # GitHub Actions Workflows
 
-このプロジェクトは以下のワークフローを使用しています：
+This project uses the following workflows:
 
-## CI（ci.yml）
-**トリガー**: 
-- PRのmainブランチへのマージ
-- developブランチへのpush
-- 手動実行（workflow_dispatch）
+## CI (ci.yml)
+**Triggers**: 
+- Pull requests to main branch
+- Push to develop branch
+- Manual execution (workflow_dispatch)
 
-**用途**: 日常開発での品質チェック
-- テスト実行
-- リンター
-- セキュリティスキャン  
-- ビルド確認
+**Purpose**: Daily development quality checks
+- Test execution
+- Linting
+- Security scanning  
+- Build verification
 
-## Release（release.yml）
-**トリガー**: 
-- v*タグのpush（例：v1.0.0）
+## Release (release.yml)
+**Triggers**: 
+- Push of v* tags (e.g., v1.0.0)
 
-**用途**: リリース時の最終検証とバイナリビルド
-- テスト実行（最終確認）
-- マルチプラットフォームビルド（Linux, macOS, Windows）
-- GitHub Releaseの自動作成
-- リリースノート生成
+**Purpose**: Final validation and binary build for releases
+- Test execution (final confirmation)
+- Multi-platform builds (Linux, macOS, Windows)
+- Automatic GitHub Release creation
+- Release notes generation
 
-## ローカルテスト（act）
+## Local Testing (act)
 
-actを使用してローカルでGitHub Actionsをテストできます：
+You can test GitHub Actions locally using act:
 
 ```bash
-# actのインストール（macOS）
+# Install act (macOS)
 brew install act
 
-# CIワークフローをローカル実行
+# Run CI workflow locally
 act -W .github/workflows/ci.yml
 
-# 特定のジョブのみ実行
+# Run specific job only
 act -W .github/workflows/ci.yml -j test
 
-# デバッグモード
+# Debug mode
 act -W .github/workflows/ci.yml --verbose
 ```
 
-## 推奨フロー
+## Recommended Workflow
 
-1. **開発時**: developブランチで作業 → CIが自動実行
-2. **PR時**: main向けPR作成 → CIが自動実行  
-3. **リリース時**: タグ作成 → Releaseワークフローが自動実行
+1. **Development**: Work on develop branch → CI runs automatically
+2. **Pull Request**: Create PR to main → CI runs automatically  
+3. **Release**: Create tag → Release workflow runs automatically
 
-これにより、mainブランチへの直接pushでは不要なCI実行を避け、リリース時のみ完全なテスト+ビルドを実行します。
+This approach avoids unnecessary CI execution on direct pushes to main branch, running complete tests and builds only during releases.

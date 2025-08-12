@@ -34,6 +34,7 @@ output/
 # IDE specific files
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -42,6 +43,7 @@ output/
 .claude/
 .serena/
 CLAUDE.md
+.actrc
 
 # OS specific files
 .DS_Store
@@ -51,6 +53,13 @@ Thumbs.db
 coverage.html
 coverage.out
 coverage.txt
+
+# Generated reports
+complexity-report/
+complexity-report.txt
+*.prof
+*.cpu
+*.mem
 
 # Environment files
 .env
