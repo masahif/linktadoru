@@ -24,7 +24,7 @@ help:
 	@echo '  make <target>'
 	@echo ''
 	@echo 'Targets:'
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ": "} /^## / {sub(/^## /, "", $$1); printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 ## build: Build binary for current platform
 .PHONY: build
@@ -225,7 +225,7 @@ build-windows:
 .PHONY: install
 install:
 	@echo "Installing ${BINARY_NAME}..."
-	go install ${GOFLAGS} ${LDFLAGS} ./${CMD_DIR}
+	go build ${GOFLAGS} ${LDFLAGS} -o $$(go env GOPATH)/bin/${BINARY_NAME} ./${CMD_DIR}
 
 ## uninstall: Remove binary from GOPATH/bin
 .PHONY: uninstall
@@ -238,7 +238,7 @@ uninstall:
 .PHONY: run
 run: build
 	@echo "Running ${BINARY_NAME}..."
-	./${BINARY_NAME} --help
+	./${DIST_DIR}/${BINARY_NAME} --help
 
 ## release-linux: Build Linux binaries for release
 .PHONY: release-linux
