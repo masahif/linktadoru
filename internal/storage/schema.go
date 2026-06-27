@@ -2,11 +2,16 @@ package storage
 
 const schemaSQL = `
 -- Pages table now serves as both queue and results storage
--- status column manages the lifecycle: pending -> processing -> completed/skipped/error
+-- status column manages the lifecycle:
+--   discovered -> pending -> processing -> completed/skipped/error
+-- 'discovered' marks a page that exists only as a link-graph node (the target of
+-- a saved link) and has NOT been selected for crawling. Only 'pending' rows are
+-- picked up by GetNextFromQueue, so include/exclude filtering takes effect when a
+-- discovered node is promoted to 'pending' (see AddToQueue / processNewURLs).
 CREATE TABLE IF NOT EXISTS pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error', 'discovered')),
     
     -- Queue-related fields
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

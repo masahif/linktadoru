@@ -183,6 +183,16 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
 
+	// Reset rows left in 'processing' by a previous interrupted run back to
+	// 'pending'. No workers are running yet, so every 'processing' row is stale.
+	// This both re-queues interrupted URLs and prevents a stale 'processing' row
+	// from keeping HasQueuedItems() perpetually true, which would otherwise stop
+	// shouldExitOnEmptyQueue from ever firing and hang every worker (issue #46
+	// review follow-up). Passing 0 treats all current 'processing' rows as stale.
+	if err := c.storage.CleanupStaleProcessing(0); err != nil {
+		slog.Error("Failed to reset stale processing rows", "error", err)
+	}
+
 	if len(seedURLs) > 0 {
 		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
@@ -370,12 +380,22 @@ func (c *DefaultCrawler) shouldStopWorker(id int) bool {
 	return false
 }
 
-// shouldExitOnEmptyQueue checks if worker should exit when queue is empty
+// shouldExitOnEmptyQueue checks if a worker should exit when GetNextFromQueue
+// returned nothing. It exits only when no crawlable work remains: no 'pending'
+// rows and no 'processing' rows that another worker might still turn into new
+// 'pending' links.
+//
+// This deliberately does NOT key off PagesCrawled. 'discovered' link-graph nodes
+// (issue #46) are not crawlable, so a resume against a database that holds only
+// 'discovered' rows must terminate instead of spinning forever — and a run whose
+// seeds all errored (PagesCrawled == 0) must end rather than hang.
 func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
-	c.statsMutex.RLock()
-	defer c.statsMutex.RUnlock()
-
-	return c.stats.PagesCrawled > 0
+	hasItems, err := c.storage.HasQueuedItems()
+	if err != nil {
+		slog.Error("Worker failed to check queued items", "error", err)
+		return false
+	}
+	return !hasItems
 }
 
 // workerSleep applies the configured delay between requests
@@ -393,6 +413,17 @@ func (c *DefaultCrawler) processURLItem(id int, item *URLItem) {
 	// Rate limiting
 	if err := c.rateLimiter.Wait(c.ctx, item.URL); err != nil {
 		slog.Error("Worker rate limiting error", "worker_id", id, "error", err)
+		// A non-cancellation error here (e.g. a malformed URL that fails to parse)
+		// would otherwise leave the row in 'processing' forever and hang the
+		// HasQueuedItems()-based worker exit. Mark it terminal. On context
+		// cancellation we leave the row alone — the run is ending and a later
+		// resume's CleanupStaleProcessing resets it back to 'pending'.
+		if c.ctx.Err() == nil {
+			if serr := c.storage.SavePageError(item.ID, "rate_limit_error", err.Error()); serr != nil {
+				slog.Error("Worker failed to mark rate-limit error", "worker_id", id, "url", item.URL, "error", serr)
+			}
+			c.incrementErrorCount()
+		}
 		return
 	}
 
@@ -439,24 +470,43 @@ func (c *DefaultCrawler) handleProcessingError(id int, item *URLItem, err error)
 
 // handleProcessingResult handles successful page processing results
 func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *PageResult) {
-	// Save page result
+	// Save links and queue newly discovered URLs BEFORE marking this page
+	// completed. While this runs, item.ID is still 'processing', so
+	// HasQueuedItems() stays true across the whole window — an idle sibling
+	// worker cannot observe an empty queue and exit early before the freshly
+	// discovered links are promoted to 'pending'. Reversing this order would
+	// open a brief pending+processing==0 window on sparse graphs (no data loss,
+	// but lost parallelism).
+	if err := c.storage.SaveLinks(result.Links); err != nil {
+		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
+	}
+	c.processNewURLs(id, result.Links, item.URL)
+
+	// Move this page out of 'processing' to a terminal state.
 	if result.Page != nil {
 		if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
 			slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
 		} else {
 			c.incrementCrawledCount()
 		}
+	} else {
+		// No page was produced — e.g. a transport/network failure that the
+		// processor encodes in result.Error (Page == nil, no Go error, so it
+		// lands here rather than in handleProcessingError). Mark the row 'error'
+		// so it leaves 'processing'. Otherwise the row would stay 'processing'
+		// forever and the HasQueuedItems()-based worker exit could never fire —
+		// every worker would sleep-loop indefinitely.
+		errType, errMsg := "processing_error", "no page result"
+		if result.Error != nil {
+			errType, errMsg = result.Error.ErrorType, result.Error.ErrorMessage
+		}
+		if err := c.storage.SavePageError(item.ID, errType, errMsg); err != nil {
+			slog.Error("Worker failed to mark page error", "worker_id", id, "url", item.URL, "error", err)
+		}
+		c.incrementErrorCount()
 	}
 
-	// Save all links in batch
-	if err := c.storage.SaveLinks(result.Links); err != nil {
-		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
-	}
-
-	// Process new URLs for crawling
-	c.processNewURLs(id, result.Links, item.URL)
-
-	// Save error if any (separate from page processing errors)
+	// Save error details to the crawl_errors table (separate from the pages row).
 	if result.Error != nil {
 		if err := c.storage.SaveError(result.Error); err != nil {
 			slog.Error("Worker failed to save error", "worker_id", id, "url", item.URL, "error", err)
@@ -474,12 +524,15 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
 	var newURLs []string
 	for _, link := range links {
-		if link.LinkType == "internal" && c.shouldCrawlURL(link.TargetURL) {
-			if status, exists := c.storage.GetURLStatus(link.TargetURL); !exists {
-				newURLs = append(newURLs, link.TargetURL)
-			} else {
-				_ = status // URL already tracked
-			}
+		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {
+			continue
+		}
+		// Queue the URL when it is brand new, or when it currently exists only as
+		// a 'discovered' link-graph node (created by SaveLinks). AddToQueue inserts
+		// or promotes it to 'pending'. URLs already pending/processing/completed/
+		// skipped/error are left untouched.
+		if status, exists := c.storage.GetURLStatus(link.TargetURL); !exists || status == "discovered" {
+			newURLs = append(newURLs, link.TargetURL)
 		}
 	}
 

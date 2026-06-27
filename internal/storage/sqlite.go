@@ -60,7 +60,14 @@ func (s *SQLiteStorage) InitSchema() error {
 		}
 	}
 
-	// Create schema
+	// Migrate an existing pages table whose CHECK constraint predates the
+	// 'discovered' status (see migratePagesAddDiscovered). No-op on a fresh DB.
+	if err := s.migratePagesAddDiscovered(); err != nil {
+		return fmt.Errorf("failed to migrate pages table: %w", err)
+	}
+
+	// Create schema (idempotent). After a migration this also recreates the
+	// indexes and views that the table rebuild dropped.
 	if _, err := s.db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
@@ -73,8 +80,22 @@ func (s *SQLiteStorage) Close() error {
 	return s.db.Close()
 }
 
-// AddToQueue adds URLs to the queue (pages table with status='pending')
-// Uses INSERT OR IGNORE to prevent duplicates
+// AddToQueue queues URLs for crawling by setting their status to 'pending'.
+//
+// It is an upsert that owns the "promote to pending" responsibility:
+//   - a brand new URL is inserted with status='pending'
+//   - a URL already known only as a link-graph node ('discovered') is promoted
+//     to 'pending' so it gets crawled
+//   - URLs already 'pending'/'processing'/'completed'/'skipped'/'error' are left
+//     untouched (no re-queue; retries are handled by RequeueErrorPages)
+//
+// Callers are expected to have applied include/exclude filtering before calling
+// this; that is what makes the patterns take effect (see processNewURLs).
+//
+// On promotion, added_at is refreshed to the enqueue time so the URL joins the
+// tail of the added_at-ordered queue. This is intentional: it preserves
+// breadth-first crawl order (a node discovered earlier but only now selected for
+// crawling is queued at the moment of selection, not its discovery time).
 func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	if len(urls) == 0 {
 		return nil
@@ -87,8 +108,12 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO pages (url, status, added_at) 
+		INSERT INTO pages (url, status, added_at)
 		VALUES (?, 'pending', ?)
+		ON CONFLICT(url) DO UPDATE SET
+			status = 'pending',
+			added_at = excluded.added_at
+		WHERE pages.status = 'discovered'
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -321,9 +346,11 @@ func (s *SQLiteStorage) saveLinksBatch(links []*crawler.LinkData) error {
 			return fmt.Errorf("failed to query page ID for %s: %w", url, err)
 		}
 
-		// Create page if it doesn't exist
+		// Create page if it doesn't exist. New nodes are 'discovered' (link-graph
+		// only), NOT 'pending' — otherwise every discovered link would be queued
+		// for crawling, bypassing include/exclude filtering (issue #46).
 		result, err := tx.Exec(
-			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'pending', ?)",
+			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'discovered', ?)",
 			url, time.Now(),
 		)
 		if err != nil {
@@ -525,15 +552,20 @@ func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
 	return items, nil
 }
 
-// CleanupStaleProcessing resets processing items that have been stuck
+// CleanupStaleProcessing resets processing items that have been stuck back to
+// 'pending'. A row with a NULL processing_started_at is always reset: `NULL < ?`
+// is never true in SQL, so without the explicit IS NULL clause such a row would
+// survive cleanup and keep HasQueuedItems() perpetually true, hanging the
+// crawler. The timestamp should never be NULL on the normal path, but the
+// invariant is cheap to enforce here.
 func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
 	cutoff := time.Now().Add(-timeout)
 
 	_, err := s.db.Exec(`
-		UPDATE pages 
-		SET status = 'pending', processing_started_at = NULL 
-		WHERE status = 'processing' 
-		AND processing_started_at < ?
+		UPDATE pages
+		SET status = 'pending', processing_started_at = NULL
+		WHERE status = 'processing'
+		AND (processing_started_at < ? OR processing_started_at IS NULL)
 	`, cutoff)
 
 	if err != nil {
@@ -592,9 +624,10 @@ func (s *SQLiteStorage) getOrCreatePageID(url string) (int, error) {
 		return 0, fmt.Errorf("failed to query page ID: %w", err)
 	}
 
-	// Page doesn't exist, create it with 'queued' status
+	// Page doesn't exist, create it as a 'discovered' link-graph node (not
+	// 'pending') so it is not crawled unless AddToQueue promotes it (issue #46).
 	result, err := s.db.Exec(
-		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'pending', ?)",
+		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'discovered', ?)",
 		url, time.Now(),
 	)
 	if err != nil {
