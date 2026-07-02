@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- Retry mechanism never fired: the retryable-error filter matched error types
-  that were never written. Transient `network_error` failures are now retried
-  (up to 3 times); deterministic failures are not.
+- Retry mechanism never fired — two independent bugs: the retryable-error
+  filter matched error types that were never written, and the retry phase
+  itself was unreachable (the last exiting worker cancelled the crawl
+  context). Transient `network_error` failures now get one retry pass per
+  run, bounded by a total of 3 attempts across runs; deterministic failures
+  are not retried.
 - Invalid `include_patterns` / `exclude_patterns` regexes were silently
   ignored. They are now validated at startup and abort the run with a clear
   error message.

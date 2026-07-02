@@ -53,16 +53,22 @@ LinkTadoruは、SEO分析用に設計された高性能で並行処理可能なW
 
 ```go
 type CrawlConfig struct {
-    SeedURLs        []string      
-    Concurrency     int           
-    RequestDelay    time.Duration 
-    RequestTimeout  time.Duration 
-    UserAgent       string        
-    RespectRobots   bool          
-    IncludePatterns []string      
-    ExcludePatterns []string      
-    DatabasePath    string        
-    Limit           int
+    SeedURLs            []string
+    Concurrency         int
+    RequestDelay        float64       // 秒
+    RequestTimeout      time.Duration
+    UserAgent           string
+    IgnoreRobotsTxt     bool
+    FollowExternalHosts bool
+    Limit               int
+    MaxResponseSize     int64         // バイト
+    Auth                *Auth
+    IncludePatterns     []string
+    ExcludePatterns     []string
+    AllowedSchemes      []string
+    Headers             []string
+    DatabasePath        string
+    // ... ロギング設定 (LogLevel, LogFile, ...)
 }
 ```
 
@@ -97,7 +103,8 @@ pagesテーブルは二重の目的を果たします：
 - クロール済みページから発見されたリンクは`status='discovered'`で記録される（グラフのノードであり、クロール対象ではない）
 - クロール対象に選ばれたURL（シード、またはinclude/excludeフィルタを通過した発見リンク）は`status='pending'`に昇格
 - ワーカーがアトミックにアイテムを取得: `pending` → `processing`
-- 完了時の更新: `processing` → `completed` または `error`
+- 完了時の更新: `processing` → `completed`、`skipped`（robots.txt）、または `error`
+- 注: `completed` は「取得が完了した」ことを意味する。404などのHTTPエラーも`completed`となり、結果は`status_code`カラムに記録される
 
 **結果ストレージ:**
 - クロール結果フィールドは処理されるまで`NULL`

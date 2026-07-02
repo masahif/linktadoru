@@ -43,7 +43,7 @@ Create a `linktadoru.yml` file:
 # Basic crawling parameters (updated defaults)
 concurrency: 2              # Number of concurrent workers (default: 2, was 10)
 request_delay: 0.1           # Delay between requests in seconds (default: 0.1, was 1.0)
-request_timeout: 30.0        # HTTP request timeout in seconds
+request_timeout: "30s"       # HTTP request timeout (Go duration, e.g. "30s", "1m")
 user_agent: "LinkTadoru/1.0" # User-Agent header
 ignore_robots_txt: false        # Whether to ignore robots.txt rules
 limit: 0                    # Stop after N pages (0 = unlimited)
@@ -88,7 +88,7 @@ All configuration options can be set via environment variables with the `LT_` pr
 # Basic configuration
 export LT_CONCURRENCY=2
 export LT_REQUEST_DELAY=0.1
-export LT_REQUEST_TIMEOUT=30.0
+export LT_REQUEST_TIMEOUT=30s
 export LT_USER_AGENT="MyBot/1.0"
 export LT_IGNORE_ROBOTS_TXT=false
 export LT_DATABASE_PATH="./mysite.db"

@@ -207,10 +207,11 @@ func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
 
 // Start starts the crawling process
 // Startup process:
-// 1. Add seed URLs to queue with 'queued' status
-// 2. Start configured number of workers
-// 3. Workers compete for 'queued' items using atomic status updates
-// 4. Continue until queue is empty or limits reached
+//  1. Add seed URLs to queue with 'pending' status
+//  2. Start configured number of workers
+//  3. Workers compete for 'pending' items using atomic status updates
+//  4. Continue until queue is empty or limits reached, then retry
+//     transient failures once before returning
 func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()

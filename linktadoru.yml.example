@@ -4,7 +4,7 @@
 # Basic crawling settings (improved defaults)
 concurrency: 2              # Number of concurrent workers (default: 2, was 10)
 request_delay: 0.1           # Delay between requests in seconds (default: 0.1, was 1.0)
-request_timeout: 30.0        # HTTP request timeout in seconds
+request_timeout: "30s"       # HTTP request timeout (Go duration, e.g. "30s", "1m")
 user_agent: "LinkTadoru/1.0"       # User-Agent header (version will be dynamically set if not specified)
 ignore_robots_txt: false    # Whether to ignore robots.txt rules (default: respect robots.txt)
 follow_external_hosts: false # Whether to crawl external hosts (default: same-host only for safety)

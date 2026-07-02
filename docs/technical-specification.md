@@ -53,16 +53,22 @@ The configuration system follows a hierarchical priority:
 
 ```go
 type CrawlConfig struct {
-    SeedURLs        []string      
-    Concurrency     int           
-    RequestDelay    time.Duration 
-    RequestTimeout  time.Duration 
-    UserAgent       string        
-    RespectRobots   bool          
-    IncludePatterns []string      
-    ExcludePatterns []string      
-    DatabasePath    string        
-    Limit           int
+    SeedURLs            []string
+    Concurrency         int
+    RequestDelay        float64       // seconds
+    RequestTimeout      time.Duration
+    UserAgent           string
+    IgnoreRobotsTxt     bool
+    FollowExternalHosts bool
+    Limit               int
+    MaxResponseSize     int64         // bytes
+    Auth                *Auth
+    IncludePatterns     []string
+    ExcludePatterns     []string
+    AllowedSchemes      []string
+    Headers             []string
+    DatabasePath        string
+    // ... logging options (LogLevel, LogFile, ...)
 }
 ```
 
