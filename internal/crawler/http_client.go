@@ -3,6 +3,7 @@ package crawler
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,17 +11,28 @@ import (
 	"time"
 )
 
+// DefaultMaxResponseSize bounds how many bytes of a response body are read
+// when no explicit limit is configured. Without a bound, a single huge (or
+// malicious) response would be read entirely into memory.
+const DefaultMaxResponseSize = 10 * 1024 * 1024 // 10 MiB
+
+// ErrResponseTooLarge is returned when a response body exceeds the configured
+// size limit. Callers can detect it with errors.Is to classify the failure as
+// deterministic (not worth retrying).
+var ErrResponseTooLarge = errors.New("response body exceeds size limit")
+
 // HTTPClient handles HTTP requests with performance metrics
 type HTTPClient struct {
-	client        *http.Client
-	userAgent     string
-	authType      string
-	username      string            // Basic auth username
-	password      string            // Basic auth password
-	bearerToken   string            // Bearer token
-	apiKeyHeader  string            // API key header name
-	apiKeyValue   string            // API key header value
-	customHeaders map[string]string // Custom headers
+	client          *http.Client
+	userAgent       string
+	maxResponseSize int64 // Max bytes to read from a response body
+	authType        string
+	username        string            // Basic auth username
+	password        string            // Basic auth password
+	bearerToken     string            // Bearer token
+	apiKeyHeader    string            // API key header name
+	apiKeyValue     string            // API key header value
+	customHeaders   map[string]string // Custom headers
 }
 
 // HTTPMetrics contains performance metrics for an HTTP request
@@ -67,9 +79,18 @@ func NewHTTPClient(userAgent string, timeout time.Duration) *HTTPClient {
 	}
 
 	return &HTTPClient{
-		client:        client,
-		userAgent:     userAgent,
-		customHeaders: make(map[string]string),
+		client:          client,
+		userAgent:       userAgent,
+		maxResponseSize: DefaultMaxResponseSize,
+		customHeaders:   make(map[string]string),
+	}
+}
+
+// SetMaxResponseSize overrides the response body size limit (bytes).
+// Values <= 0 keep the current limit.
+func (h *HTTPClient) SetMaxResponseSize(n int64) {
+	if n > 0 {
+		h.maxResponseSize = n
 	}
 }
 
@@ -200,10 +221,14 @@ func (h *HTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 		metrics.TTFB = firstByteTime.Sub(startTime)
 	}
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read response body, bounded so a huge response cannot exhaust memory.
+	// Read one extra byte to distinguish "exactly at the limit" from "over it".
+	body, err := io.ReadAll(io.LimitReader(resp.Body, h.maxResponseSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if int64(len(body)) > h.maxResponseSize {
+		return nil, fmt.Errorf("%w (%d bytes limit): %s", ErrResponseTooLarge, h.maxResponseSize, url)
 	}
 
 	// Calculate total download time

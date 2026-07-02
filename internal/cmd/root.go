@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,13 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+// ExecuteContext is Execute with a caller-supplied context, so signal-driven
+// cancellation (SIGINT/SIGTERM in main) propagates to the crawler via
+// cmd.Context().
+func ExecuteContext(ctx context.Context) error {
+	return rootCmd.ExecuteContext(ctx)
+}
+
 // SetVersionInfo sets version information for the CLI
 func SetVersionInfo(v, bt string) {
 	version = v
@@ -67,6 +75,7 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
+	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
 	rootCmd.Flags().String("auth-type", "", "Authentication type: 'basic', 'bearer', or 'api-key'")
@@ -104,6 +113,7 @@ func init() {
 		{"ignore_robots_txt", "ignore-robots-txt"},
 		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
+		{"max_response_size", "max-response-size"},
 		{"include_patterns", "include-patterns"},
 		{"exclude_patterns", "exclude-patterns"},
 		{"database_path", "database"},

@@ -6,12 +6,28 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
 	// SQLite database driver (CGO-free)
 	_ "modernc.org/sqlite"
 )
+
+// sqlTimeFormat is the layout used for every timestamp written to the database.
+// It is UTC with a FIXED-WIDTH fractional second so that SQLite's string
+// comparison (`processing_started_at < ?`, `ORDER BY added_at`) matches
+// chronological order regardless of the machine's timezone or DST changes.
+// time.RFC3339Nano is unsuitable here: it trims trailing zeros, which breaks
+// lexicographic ordering ("...11.1Z" sorts after "...11.10001Z").
+const sqlTimeFormat = "2006-01-02T15:04:05.000000000Z"
+
+// sqlTime formats a timestamp for storage. Always bind times through this
+// helper instead of passing time.Time to the driver, which would store Go's
+// timezone-dependent time.String() form.
+func sqlTime(t time.Time) string {
+	return t.UTC().Format(sqlTimeFormat)
+}
 
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
@@ -125,7 +141,7 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 		}
 	}()
 
-	now := time.Now()
+	now := sqlTime(time.Now())
 	for _, url := range urls {
 		if _, err := stmt.Exec(url, now); err != nil {
 			return fmt.Errorf("failed to insert URL %s: %w", url, err)
@@ -149,7 +165,7 @@ func (s *SQLiteStorage) GetNextFromQueue() (*crawler.URLItem, error) {
 			LIMIT 1
 		) AND status = 'pending'
 		RETURNING id, url
-	`, time.Now()).Scan(&item.ID, &item.URL)
+	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL)
 
 	if err == sql.ErrNoRows {
 		return nil, nil // No items in queue
@@ -213,7 +229,7 @@ func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
 		page.DownloadTime.Milliseconds(),
 		page.ResponseSize,
 		string(headersJSON),
-		page.CrawledAt,
+		sqlTime(page.CrawledAt),
 		id,
 	)
 
@@ -282,7 +298,7 @@ func (s *SQLiteStorage) SaveLink(link *crawler.LinkData) error {
 		link.AnchorText,
 		link.LinkType,
 		link.RelAttribute,
-		link.CrawledAt,
+		sqlTime(link.CrawledAt),
 	)
 
 	if err != nil {
@@ -351,7 +367,7 @@ func (s *SQLiteStorage) saveLinksBatch(links []*crawler.LinkData) error {
 		// for crawling, bypassing include/exclude filtering (issue #46).
 		result, err := tx.Exec(
 			"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'discovered', ?)",
-			url, time.Now(),
+			url, sqlTime(time.Now()),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert page %s: %w", url, err)
@@ -401,7 +417,7 @@ func (s *SQLiteStorage) saveLinksBatch(links []*crawler.LinkData) error {
 			link.AnchorText,
 			link.LinkType,
 			link.RelAttribute,
-			link.CrawledAt,
+			sqlTime(link.CrawledAt),
 		); err != nil {
 			return fmt.Errorf("failed to insert link %s -> %s: %w", link.SourceURL, link.TargetURL, err)
 		}
@@ -422,7 +438,7 @@ func (s *SQLiteStorage) SaveError(crawlErr *crawler.CrawlError) error {
 		crawlErr.URL,
 		crawlErr.ErrorType,
 		crawlErr.ErrorMessage,
-		crawlErr.OccurredAt,
+		sqlTime(crawlErr.OccurredAt),
 	)
 
 	if err != nil {
@@ -466,14 +482,23 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	return count > 0, nil
 }
 
+// retryableErrorTypes lists the last_error_type values eligible for retry.
+// These MUST match the strings the crawler actually writes via SavePageError:
+// 'network_error' (transient transport failure, see page_processor.go) is
+// worth retrying. Deliberately excluded: 'processing_error' and
+// 'rate_limit_error' (malformed URLs — retrying reproduces the same failure)
+// and 'response_too_large' (deterministic — the page will exceed the limit
+// again).
+const retryableErrorTypes = `('network_error')`
+
 // GetRetryablePages returns pages with error status that can be retried
 func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
 	rows, err := s.db.Query(`
-		SELECT id, url, retry_count, last_error_type 
-		FROM pages 
-		WHERE status = 'error' 
-		  AND retry_count < ? 
-		  AND last_error_type IN ('network_timeout', 'connection_refused', 'dns_resolution_failed', 'server_error_5xx')
+		SELECT id, url, retry_count, last_error_type
+		FROM pages
+		WHERE status = 'error'
+		  AND retry_count < ?
+		  AND last_error_type IN `+retryableErrorTypes+`
 		ORDER BY retry_count ASC, added_at ASC
 	`, maxRetries)
 	if err != nil {
@@ -502,11 +527,11 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 // RequeueErrorPages moves error status pages back to pending for retry
 func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	result, err := s.db.Exec(`
-		UPDATE pages 
-		SET status = 'pending', processing_started_at = NULL 
-		WHERE status = 'error' 
-		  AND retry_count < ? 
-		  AND last_error_type IN ('network_timeout', 'connection_refused', 'dns_resolution_failed', 'server_error_5xx')
+		UPDATE pages
+		SET status = 'pending', processing_started_at = NULL
+		WHERE status = 'error'
+		  AND retry_count < ?
+		  AND last_error_type IN `+retryableErrorTypes+`
 	`, maxRetries)
 	if err != nil {
 		return 0, fmt.Errorf("failed to requeue error pages: %w", err)
@@ -520,38 +545,6 @@ func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	return int(rowsAffected), nil
 }
 
-// GetProcessingItems returns currently processing items
-func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
-	query := `
-		SELECT id, url 
-		FROM pages 
-		WHERE status = 'processing' 
-		ORDER BY processing_started_at DESC
-	`
-
-	rows, err := s.db.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query processing items: %w", err)
-	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			// Log error but don't fail the operation
-			_ = err
-		}
-	}()
-
-	var items []crawler.URLItem
-	for rows.Next() {
-		var item crawler.URLItem
-		if err := rows.Scan(&item.ID, &item.URL); err != nil {
-			return nil, fmt.Errorf("failed to scan processing item: %w", err)
-		}
-		items = append(items, item)
-	}
-
-	return items, nil
-}
-
 // CleanupStaleProcessing resets processing items that have been stuck back to
 // 'pending'. A row with a NULL processing_started_at is always reset: `NULL < ?`
 // is never true in SQL, so without the explicit IS NULL clause such a row would
@@ -559,7 +552,7 @@ func (s *SQLiteStorage) GetProcessingItems() ([]crawler.URLItem, error) {
 // crawler. The timestamp should never be NULL on the normal path, but the
 // invariant is cheap to enforce here.
 func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
-	cutoff := time.Now().Add(-timeout)
+	cutoff := sqlTime(time.Now().Add(-timeout))
 
 	_, err := s.db.Exec(`
 		UPDATE pages
@@ -606,7 +599,9 @@ func (s *SQLiteStorage) GetURLStatus(url string) (status string, exists bool) {
 		return "", false
 	}
 	if err != nil {
-		// Log error but return false
+		// A real DB failure must not pass silently as "URL not found" — the
+		// caller would then re-queue a URL that may already be tracked.
+		slog.Error("Failed to query URL status", "url", url, "error", err)
 		return "", false
 	}
 	return status, true
@@ -628,7 +623,7 @@ func (s *SQLiteStorage) getOrCreatePageID(url string) (int, error) {
 	// 'pending') so it is not crawled unless AddToQueue promotes it (issue #46).
 	result, err := s.db.Exec(
 		"INSERT OR IGNORE INTO pages (url, status, added_at) VALUES (?, 'discovered', ?)",
-		url, time.Now(),
+		url, sqlTime(time.Now()),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert page: %w", err)

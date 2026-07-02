@@ -26,6 +26,12 @@ type DefaultCrawler struct {
 	robotsParser *RobotsParser
 	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
 
+	// Include/exclude patterns compiled once at construction. Compiling here
+	// (a) rejects an invalid pattern at startup instead of silently never
+	// matching it, and (b) avoids recompiling every pattern for every URL.
+	includePatterns []*regexp.Regexp
+	excludePatterns []*regexp.Regexp
+
 	// State
 	stats         CrawlStats
 	statsMutex    sync.RWMutex
@@ -44,6 +50,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 	// Initialize HTTP client
 	httpClient := NewHTTPClient(config.UserAgent, config.RequestTimeout)
+	httpClient.SetMaxResponseSize(config.MaxResponseSize)
 
 	// Configure basic authentication if provided
 	if config.Auth != nil {
@@ -117,20 +124,47 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 		}
 	}
 
+	// Compile URL filter patterns up front so an invalid regex fails the run
+	// loudly instead of being silently ignored on every URL.
+	includePatterns, err := compilePatterns(config.IncludePatterns)
+	if err != nil {
+		return nil, fmt.Errorf("invalid include_patterns: %w", err)
+	}
+	excludePatterns, err := compilePatterns(config.ExcludePatterns)
+	if err != nil {
+		return nil, fmt.Errorf("invalid exclude_patterns: %w", err)
+	}
+
 	crawler := &DefaultCrawler{
-		config:       config,
-		storage:      storage,
-		httpClient:   httpClient,
-		processor:    processor,
-		rateLimiter:  rateLimiter,
-		robotsParser: robotsParser,
-		allowedHosts: allowedHosts,
+		config:          config,
+		storage:         storage,
+		httpClient:      httpClient,
+		processor:       processor,
+		rateLimiter:     rateLimiter,
+		robotsParser:    robotsParser,
+		allowedHosts:    allowedHosts,
+		includePatterns: includePatterns,
+		excludePatterns: excludePatterns,
 		stats: CrawlStats{
 			StartTime: time.Now(),
 		},
 	}
 
 	return crawler, nil
+}
+
+// compilePatterns compiles a list of regex patterns, reporting the offending
+// pattern on failure.
+func compilePatterns(patterns []string) ([]*regexp.Regexp, error) {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, p := range patterns {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			return nil, fmt.Errorf("pattern %q: %w", p, err)
+		}
+		compiled = append(compiled, re)
+	}
+	return compiled, nil
 }
 
 // isAllowedHost checks if the given URL's host is allowed for crawling
@@ -455,6 +489,17 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 		c.workerSleep()
 		return false
 	}
+
+	// Honor the robots.txt Crawl-delay directive when it asks for a slower
+	// pace than our configured default. SetDomainDelay is a no-op when the
+	// delay is unchanged, so calling it per URL does not reset the limiter.
+	if u, err := url.Parse(item.URL); err == nil {
+		defaultDelay := time.Duration(c.config.RequestDelay * float64(time.Second))
+		if d := c.robotsParser.GetCrawlDelay(u.Host); d > defaultDelay {
+			c.rateLimiter.SetDomainDelay(u.Host, d)
+		}
+	}
+
 	return true
 }
 
@@ -587,10 +632,10 @@ func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
 	}
 
 	// If include patterns are specified, URL must match at least one
-	if len(c.config.IncludePatterns) > 0 {
+	if len(c.includePatterns) > 0 {
 		matched := false
-		for _, pattern := range c.config.IncludePatterns {
-			if m, _ := regexp.MatchString(pattern, urlStr); m {
+		for _, re := range c.includePatterns {
+			if re.MatchString(urlStr) {
 				matched = true
 				break
 			}
@@ -601,8 +646,8 @@ func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
 	}
 
 	// Check exclude patterns - URL must not match any
-	for _, pattern := range c.config.ExcludePatterns {
-		if matched, _ := regexp.MatchString(pattern, urlStr); matched {
+	for _, re := range c.excludePatterns {
+		if re.MatchString(urlStr) {
 			return false
 		}
 	}
