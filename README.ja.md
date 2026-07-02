@@ -15,6 +15,7 @@ Go言語で構築された高性能Webクローラーおよびリンク解析ツ
 - **複数の認証方式**: Basic認証、Bearerトークン、APIキーに対応
 - **カスタムHTTPヘッダー**: リクエスト用カスタムヘッダーの設定
 - **Robots.txt準拠**: robots.txtルールとクロール遅延を尊重
+- **安全なデフォルト**: シードホスト内に留まり（`follow_external_hosts: false`）、レスポンスボディを10 MiBに制限（`max_response_size`）
 - **SQLiteストレージ**: クエリ可能なSQLiteデータベースに全データを保存
 - **再開可能**: 中断されたセッション用の永続キュー
 - **柔軟な設定**: CLIフラグ、環境変数、または階層設定ファイル対応
@@ -78,20 +79,13 @@ request_delay: 0.1           # 秒
 user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 database_path: "./linktadoru.db"
-limit: 0                    # 0 = 無制限
+limit: 0                     # 0 = 無制限
 
 # URL フィルタリング
 include_patterns: []
 exclude_patterns:
-  - "\.pdf$"
+  - "\\.pdf$"
   - "/admin/.*"
-
-# 認証（いずれか一つの方法を選択）
-auth:
-  type: "basic"             # "basic"、"bearer"、または"api-key"
-  basic:
-    username: "user"
-    password: "pass"
 
 # カスタムHTTPヘッダー
 headers:
@@ -99,9 +93,11 @@ headers:
   - "X-Custom-Header: value"
 ```
 
+コメント付きの完全な設定例は [linktadoru.yml.example](linktadoru.yml.example) を、全オプションの一覧は[設定リファレンス](docs/configuration.md)（英語）を参照してください。
+
 ### 環境変数
 
-すべての設定は `LT_` プレフィックス付きの環境変数で設定可能です：
+CLIフラグを持つオプションは `LT_` プレフィックス付きの環境変数でも設定できます。ロギング設定（`log_*`）と `allowed_schemes` にはフラグがないため、設定ファイルでのみ指定可能です。
 
 ```bash
 # 基本設定
@@ -109,85 +105,25 @@ export LT_CONCURRENCY=2
 export LT_REQUEST_DELAY=0.5
 export LT_IGNORE_ROBOTS_TXT=true
 
-# 階層設定（アンダースコアを使用）
-export LT_AUTH_TYPE=basic
-export LT_AUTH_BASIC_USERNAME=myuser
-export LT_AUTH_BASIC_PASSWORD=mypass
-
-# HTTPヘッダー
+# HTTPヘッダー（LT_HEADER_* パターン）
 export LT_HEADER_ACCEPT="application/json"
-export LT_HEADER_X_CUSTOM="value"
 
 ./linktadoru https://httpbin.org
 ```
 
-## 認証
+## 認証とカスタムヘッダー
 
-LinkTadoruは保護されたリソースにアクセスするための複数の認証方式をサポートしています。
-
-### Basic認証
+Basic認証、Bearerトークン、APIキーの各認証方式と、全リクエストへのカスタムHTTPヘッダー設定に対応しています。例：
 
 ```bash
-# CLIフラグ
-./linktadoru --auth-type basic --auth-username user --auth-password pass https://protected.httpbin.org
-
-# 環境変数（推奨）
+# 環境変数（認証情報には推奨）
 export LT_AUTH_TYPE=basic
 export LT_AUTH_BASIC_USERNAME=myuser
 export LT_AUTH_BASIC_PASSWORD=mypass
-./linktadoru https://protected.httpbin.org
+./linktadoru -H "Accept: application/json" https://protected.example.com
 ```
 
-### Bearerトークン認証
-
-```bash
-# CLIフラグ
-./linktadoru --auth-type bearer --auth-token "your-bearer-token" https://api.example.com
-
-# 環境変数（推奨）
-export LT_AUTH_TYPE=bearer
-export LT_AUTH_BEARER_TOKEN=your-bearer-token-here
-./linktadoru https://api.example.com
-```
-
-### APIキー認証
-
-```bash
-# CLIフラグ
-./linktadoru --auth-type api-key --auth-header "X-API-Key" --auth-value "your-key" https://api.example.com
-
-# 環境変数（推奨）
-export LT_AUTH_TYPE=api-key
-export LT_AUTH_APIKEY_HEADER=X-API-Key
-export LT_AUTH_APIKEY_VALUE=your-api-key-here
-./linktadoru https://api.example.com
-```
-
-### 設定ファイル
-
-```yaml
-# linktadoru.yml
-auth:
-  type: "bearer"
-  bearer:
-    token: "your-token-here"
-    # または環境変数を使用:
-    # token_env: "MY_BEARER_TOKEN"
-```
-
-## カスタムHTTPヘッダー
-
-すべてのリクエストにカスタムHTTPヘッダーを設定：
-
-```bash
-# CLIフラグ
-./linktadoru -H "Accept: application/json" -H "X-Custom: value" https://api.example.com
-
-# 環境変数
-export LT_HEADER_ACCEPT="application/json"
-export LT_HEADER_X_API_VERSION="v1"
-./linktadoru https://api.example.com
-```
+すべての認証方式（CLIフラグ・環境変数・設定ファイル）とヘッダーオプションについては、[設定リファレンス — Authentication](docs/configuration.md#authentication)（英語）を参照してください。
 
 **セキュリティ注意事項**: セキュリティ上の理由から、設定ファイルに認証情報を保存するのではなく、環境変数を使用することを推奨します。
 

@@ -14,10 +14,10 @@ Crawl a single website with default settings:
 
 ### 2. Limited Crawl with Custom Settings
 
-Crawl up to 10 pages with 2 concurrent workers:
+Crawl up to 10 pages with 2 concurrent workers and a 2-second delay (`--delay` takes seconds as a number):
 
 ```bash
-./linktadoru --limit 10 --concurrency 2 --delay 2s https://httpbin.org
+./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
 ### 3. Using Configuration File
@@ -27,15 +27,15 @@ Create a configuration file:
 ```yaml
 # mysite-config.yml
 concurrency: 3
-request_delay: 1s
-request_timeout: 15s
+request_delay: 1             # seconds (number)
+request_timeout: "15s"       # Go duration string
 user_agent: "MyBot/1.0"
 ignore_robots_txt: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
 include_patterns:
-  - "^https?://[^/]*httpbin\.org/.*"
+  - "^https?://[^/]*httpbin\\.org/.*"
 
 exclude_patterns:
   - "\\.pdf$"
@@ -81,7 +81,7 @@ LinkTadoru automatically resumes from existing database:
 ./linktadoru \
   --ignore-robots-txt \
   --concurrency 20 \
-  --delay 500ms \
+  --delay 0.5 \
   https://httpbin.org
 ```
 
@@ -96,6 +96,30 @@ Crawl only blog posts and articles:
   https://httpbin.org
 ```
 
+## How Crawling Behaves
+
+### Page Status Lifecycle
+
+Every URL gets one row in the `pages` table; the `status` column tracks its lifecycle:
+
+- `discovered` — found as a link on a crawled page; recorded for link analysis only, not queued for crawling
+- `pending` — queued for crawling (seed URLs, and discovered links that pass the include/exclude filters)
+- `processing` — currently being fetched by a worker
+- `completed` — the fetch finished. Note: HTTP errors such as 404 are also `completed`; check the `status_code` column for the result
+- `skipped` — blocked by robots.txt
+- `error` — the fetch failed: transport-level failures (DNS, timeout, connection reset), a response body exceeding `max_response_size`, or a malformed URL
+
+### Retries
+
+After the queue drains, pages whose `last_error_type` is `network_error` are requeued for one retry pass per run, up to 3 attempts in total per URL (tracked in `retry_count`). Deterministic failures are not retried.
+
+### robots.txt Crawl-delay
+
+A `Crawl-delay` in robots.txt is honored when it is slower than your configured `request_delay`. It only ever slows crawling down (never speeds it up), and is capped at 60 seconds.
+
+### Interrupting and Resuming
+
+Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start.
 
 ## Output Analysis
 
@@ -134,27 +158,7 @@ sqlite3 -header -csv linktadoru.db "SELECT * FROM links;" > links.csv
 
 ## Performance Tuning
 
-### For Large Sites
-
-```yaml
-# high-performance.yaml
-concurrency: 50
-request_delay: 100ms
-request_timeout: 10s
-user_agent: "FastCrawler/1.0"
-limit: 0  # unlimited
-```
-
-### For Respectful Crawling
-
-```yaml
-# respectful.yaml
-concurrency: 2
-request_delay: 5s
-request_timeout: 30s
-ignore_robots_txt: false
-user_agent: "PoliteBot/1.0"
-```
+See [Configuration Reference — Performance Tuning](configuration.md#performance-tuning) for recommended settings per site size and for respectful crawling.
 
 ## Troubleshooting
 

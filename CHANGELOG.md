@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Documentation overhaul (no code changes):
+  - Deduplicated content into single sources of truth: the options table in
+    `docs/configuration.md` (config/auth/headers), `.github/workflows/README.md`
+    (CI/release triggers), `docs/versioning-and-releases.md` (release process),
+    and `docs/development.md` (build/test setup, project structure).
+  - Fixed factual drift: numeric `--delay`/`request_delay` values instead of
+    invalid duration strings, `LT_` environment variables documented as
+    flag-bound only (`log_*`/`allowed_schemes` are config-file only), release
+    artifact names without version suffix and including Linux ARM64, removed
+    nonexistent `.sha256`/`develop`-branch/`.actrc` claims, forbidden header
+    list corrected, and the retry mechanism described as it is implemented
+    (post-crawl requeue of `network_error` pages, 3 attempts, no backoff).
+  - Replaced the schema SQL dump in the technical specification with a pointer
+    to `internal/storage/schema.go` plus the design rationale (unified pages
+    table, JSON headers with generated columns, views).
+  - Documented crawl behavior in `docs/basic-usage(.ja).md`: page status
+    lifecycle, retries, robots.txt `Crawl-delay` handling, and safe
+    interrupt/resume.
+  - Completed the `docs/README(.ja).md` index and added a Logging section to
+    `docs/configuration.md`. All changes mirrored across English/Japanese pairs.
+
 ## [0.9.0] - 2026-07-03
 
 ### Fixed

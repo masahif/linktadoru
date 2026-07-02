@@ -48,49 +48,20 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 5. Make sure your code lints.
 6. Issue that pull request!
 
-### Prerequisites
+### Development Environment
 
-* Go 1.23 or higher
-* golangci-lint (for linting)
-* Make (optional, for using Makefile commands)
-
-### Setting up your development environment
+Prerequisites, build/test/lint commands, the project structure, and local CI testing are documented in the [Development Guide](docs/development.md). Quick start:
 
 ```bash
-# Clone your fork
+# Clone your fork and add upstream
 git clone https://github.com/your-username/linktadoru.git
 cd linktadoru
-
-# Add upstream remote
 git remote add upstream https://github.com/masahif/linktadoru.git
 
-# Install dependencies
-go mod download
-
-# Run tests
-go test ./...
-
-# Run linter
-golangci-lint run
-
-# Build the project
+# Build, test, lint
 make build
-```
-
-### Running Tests
-
-```bash
-# Run all tests
 make test
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run tests for a specific package
-go test -v ./internal/crawler
-
-# Run benchmarks
-make bench
+make lint
 ```
 
 ### Code Style
@@ -119,22 +90,6 @@ Add concurrent crawling support
 Fixes #123
 ```
 
-## Project Structure
-
-```
-linktadoru/
-├── cmd/crawler/        # Main application entry point
-├── internal/          # Private application code
-│   ├── cmd/          # Command-line interface
-│   ├── config/       # Configuration handling
-│   ├── crawler/      # Core crawling logic
-│   ├── parser/       # HTML parsing
-│   └── storage/      # Data persistence
-├── .github/          # GitHub specific files
-├── docs/             # Documentation
-└── examples/         # Example configurations and usage
-```
-
 ## Testing Guidelines
 
 * Write table-driven tests where appropriate
@@ -152,10 +107,7 @@ linktadoru/
 
 ## Release Process
 
-1. All changes go through pull requests
-2. Maintainers review and merge PRs
-3. Releases are tagged following semantic versioning (v1.2.3)
-4. GitHub Actions automatically builds and publishes releases
+All changes go through pull requests reviewed by maintainers. Releases are tagged following semantic versioning and built automatically — see the [Versioning and Release Guide](docs/versioning-and-releases.md).
 
 ## Questions?
 

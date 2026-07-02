@@ -135,6 +135,15 @@ RETURNING id, url
 - **State Tracking**: Clear transitions: `discovered` → `pending` → `processing` → `completed`/`skipped`/`error`
 - **Resumability**: Persistent state survives process interruptions
 
+#### Retry Handling
+
+Retries are driven by the crawl loop and the storage layer, not by the HTTP client:
+
+- After the queue drains, pages that failed with `last_error_type = 'network_error'` (transient transport failures) are requeued for one retry pass per run
+- Attempts are bounded to 3 in total per URL across runs, tracked in the `retry_count` column
+- There is no backoff between attempts; the normal per-domain rate limiting applies
+- Deterministic failures (e.g. malformed URLs) are deliberately not retried
+
 ### 3. HTTP Client
 
 **Package**: `internal/crawler/http_client.go`
@@ -142,10 +151,11 @@ RETURNING id, url
 Features:
 - Custom User-Agent support
 - Configurable timeouts
-- Automatic retry with exponential backoff
 - Connection pooling
 - Response size limits
 - Performance metric collection (TTFB, download time)
+
+The HTTP client performs a single fetch per request; retries are handled at the crawl level (see Retry Handling above).
 
 ### 4. HTML Parser
 
@@ -174,123 +184,14 @@ SQLite-based storage with:
 
 #### Database Schema
 
-**Unified Pages Table (Queue + Results):**
+The authoritative schema is defined in [`internal/storage/schema.go`](../internal/storage/schema.go) and is created automatically on first run. Rather than duplicating the SQL here, these are the design decisions behind it:
 
-```sql
--- Pages table serves as both queue and results storage
-CREATE TABLE pages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error', 'discovered')),
-    
-    -- Queue-related fields
-    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    processing_started_at DATETIME,
-    
-    -- Crawl result fields (NULL until crawled)
-    status_code INTEGER,
-    title TEXT,
-    meta_description TEXT,
-    meta_robots TEXT,
-    canonical_url TEXT,
-    content_hash TEXT,
-    ttfb_ms INTEGER,
-    download_time_ms INTEGER,
-    response_size_bytes INTEGER,
-    content_type TEXT,
-    content_length INTEGER,
-    last_modified DATETIME,
-    server TEXT,
-    content_encoding TEXT,
-    crawled_at DATETIME,
-    
-    -- Error tracking
-    retry_count INTEGER DEFAULT 0,
-    last_error_type TEXT,
-    last_error_message TEXT
-);
-```
-
-**Supporting Tables:**
-
-```sql
--- Link relationships table (normalized with page IDs)
--- NOTE: UNIQUE constraint prevents duplicate relationships. If the same link
--- is found multiple times with different anchor_text, only the first is stored.
-CREATE TABLE link_relations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_page_id INTEGER NOT NULL,
-    target_page_id INTEGER NOT NULL,
-    anchor_text TEXT,
-    link_type TEXT,
-    rel_attribute TEXT,
-    crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (source_page_id) REFERENCES pages(id),
-    FOREIGN KEY (target_page_id) REFERENCES pages(id),
-    UNIQUE(source_page_id, target_page_id)
-);
-
--- User-friendly links view (maintains URL-based interface)
-CREATE VIEW links AS
-SELECT 
-    lr.id,
-    p1.url AS source_url,
-    p2.url AS target_url,
-    lr.anchor_text,
-    lr.link_type,
-    lr.rel_attribute,
-    lr.crawled_at
-FROM link_relations lr
-JOIN pages p1 ON lr.source_page_id = p1.id
-JOIN pages p2 ON lr.target_page_id = p2.id;
-
--- Separate errors table for detailed error tracking
-CREATE TABLE crawl_errors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT NOT NULL,
-    error_type TEXT NOT NULL,
-    error_message TEXT,
-    occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Metadata table
-CREATE TABLE crawl_meta (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
-);
-```
-
-**Optimized Indexes:**
-
-```sql
--- Critical indexes for queue operations
-CREATE INDEX idx_pages_status ON pages(status);
-CREATE INDEX idx_pages_status_added ON pages(status, added_at);
-CREATE INDEX idx_pages_url ON pages(url);
-
--- Conditional indexes for completed data only
-CREATE INDEX idx_pages_content_hash ON pages(content_hash) WHERE content_hash IS NOT NULL;
-CREATE INDEX idx_pages_status_code ON pages(status_code) WHERE status = 'completed';
-```
-
-**Analysis Views:**
-
-```sql
--- View for completed pages only (for analysis/reporting)
-CREATE VIEW completed_pages AS
-SELECT id, url, status_code, title, meta_description, meta_robots,
-       canonical_url, content_hash, ttfb_ms, download_time_ms,
-       response_size_bytes, content_type, content_length,
-       last_modified, server, content_encoding, crawled_at
-FROM pages WHERE status = 'completed';
-
--- View for queue management
-CREATE VIEW queue_status AS
-SELECT status, COUNT(*) as count,
-       MIN(added_at) as oldest_item,
-       MAX(added_at) as newest_item
-FROM pages GROUP BY status;
-```
+- **Unified `pages` table**: one row per URL serves as both queue entry and crawl result. The `status` column drives the lifecycle described above; crawl-result columns stay `NULL` until the page is fetched.
+- **HTTP headers as JSON with generated columns**: the full response headers are stored once in `response_http_headers` (JSON). Frequently queried headers — `content_type`, `content_length`, `last_modified`, `server`, `content_encoding`, `x_cache` — are exposed as `GENERATED ALWAYS ... STORED` columns, so they can be indexed and queried like ordinary columns without duplicating write logic.
+- **Normalized link graph**: `link_relations` stores edges as page-ID pairs with a `UNIQUE(source_page_id, target_page_id)` constraint (if the same link is found multiple times with different anchor text, only the first is kept). The `links` view re-exposes edges as URL pairs for convenient analysis.
+- **Analysis views**: `completed_pages` (fetched pages only) and `queue_status` (per-status counts with oldest/newest timestamps) provide stable query interfaces over the unified table.
+- **Supporting tables**: `crawl_errors` records every error occurrence for diagnostics; `crawl_meta` stores key-value crawl metadata.
+- **Index strategy**: queue operations are backed by indexes on `status` and `(status, added_at)`; analysis columns use partial indexes (e.g. `WHERE content_hash IS NOT NULL`) so queue writes stay cheap.
 
 ### 6. Rate Limiter
 
@@ -301,3 +202,5 @@ Implementation:
 - Token bucket algorithm
 - Configurable delays
 - Non-blocking design
+
+robots.txt `Crawl-delay` directives are honored when they are slower than the configured request delay, capped at 60 seconds.

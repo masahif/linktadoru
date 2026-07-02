@@ -12,16 +12,18 @@
 
 ```
 .
-├── cmd/crawler/          # Main application entry point
+├── cmd/crawler/           # Main application entry point
 ├── internal/
-│   ├── cmd/             # CLI command handling
-│   ├── config/          # Configuration management
-│   ├── crawler/         # Core crawling logic
-│   ├── parser/          # HTML parsing
-│   └── storage/         # Database operations
-├── docs/                # Documentation
-├── .github/workflows/   # GitHub Actions CI/CD
-└── config.yaml.example  # Example configuration
+│   ├── cmd/               # CLI command handling
+│   ├── config/            # Configuration management
+│   ├── crawler/           # Core crawling logic
+│   ├── logging/           # Logging setup and rotation
+│   ├── parser/            # HTML parsing
+│   └── storage/           # Database operations
+├── docs/                  # Documentation
+├── scripts/               # Helper scripts
+├── .github/workflows/     # GitHub Actions CI/CD
+└── linktadoru.yml.example # Example configuration
 ```
 
 ## Building
@@ -155,9 +157,6 @@ docker run --rm -v $(pwd):/workspace linktadoru-dev make check
 
 # Interactive shell
 docker run -it --rm -v $(pwd):/workspace linktadoru-dev bash
-
-# Local GitHub Actions testing
-docker run --rm -v $(pwd):/workspace -v /var/run/docker.sock:/var/run/docker.sock linktadoru-dev act
 ```
 
 ## Development Workflow
@@ -178,7 +177,6 @@ Follow the coding standards:
 
 ### 3. Run Checks
 
-#### Traditional Testing
 ```bash
 # Run all checks
 make check
@@ -189,21 +187,7 @@ make lint
 make test
 ```
 
-#### Local CI Testing (Advanced)
-```bash
-# Install act (if not already installed)
-brew install act  # macOS
-# or follow docs/github-actions-local-testing.md
-
-# Run CI locally with act
-make act
-
-# Test specific job
-make act-test
-
-# List available workflows
-make act-list
-```
+Optionally, run the CI workflow locally with act (`make act`) — see [github-actions-local-testing.md](github-actions-local-testing.md).
 
 ### 4. Commit Changes
 
@@ -230,14 +214,7 @@ git push origin feature/your-feature
 gh pr create --title "feat: your feature" --body "Description of changes"
 ```
 
-**CI Strategy**: 
-- ✅ **PR → main**: CI runs automatically
-- ❌ **push → main**: CI does not run automatically  
-- 🔧 **Manual trigger**: `gh workflow run CI --ref main`
-
-See [github-actions-local-testing.md](github-actions-local-testing.md) for details.
-
-Create a pull request on GitHub. CI will run automatically.
+Create a pull request on GitHub. CI runs automatically on PRs to `main` — see [.github/workflows/README.md](../.github/workflows/README.md) for the exact trigger conditions.
 
 ## Database Management
 
@@ -280,24 +257,7 @@ go tool pprof -http=:8080 profile.out
 
 ## Release Process
 
-### 1. Update Version
-
-Update version in relevant files if needed.
-
-### 2. Create Tag
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-### 3. GitHub Actions
-
-The release workflow automatically:
-- Runs tests
-- Builds binaries for all platforms
-- Creates GitHub release
-- Uploads artifacts
+Releases are tag-driven: pushing a `v*` tag triggers the release workflow. See [versioning-and-releases.md](versioning-and-releases.md) for the full process, artifact naming, and version embedding.
 
 ## Troubleshooting
 
@@ -310,10 +270,15 @@ The release workflow automatically:
 
 ### Debug Mode
 
-Enable debug logging:
+Enable debug logging via the configuration file (logging options have no CLI flags or environment variables):
+
+```yaml
+# linktadoru.yml
+log_level: "debug"
+```
 
 ```bash
-LOG_LEVEL=debug ./linktadoru https://httpbin.org
+./linktadoru --config linktadoru.yml https://httpbin.org
 ```
 
 ## Contributing

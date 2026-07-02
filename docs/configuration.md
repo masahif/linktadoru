@@ -7,82 +7,81 @@ LinkTadoru can be configured through multiple methods with the following priorit
 3. Configuration file (`linktadoru.yml`)
 4. Default values (lowest priority)
 
-## Command-Line Flags
+## Configuration Options
 
-```bash
-./linktadoru --help
+This table is the authoritative reference for all options. Run `./linktadoru --help` for the current flag list and `./linktadoru --show-config` to inspect the effective configuration.
 
-Flags:
-      --auth-header string         API key header name (e.g., X-API-Key)
-      --auth-password string       Password for basic authentication
-      --auth-token string          Bearer token for authorization header
-      --auth-type string           Authentication type: 'basic', 'bearer', or 'api-key'
-      --auth-username string       Username for basic authentication
-      --auth-value string          API key header value
-  -c, --concurrency int            Number of concurrent workers (default 2)
-      --config string              config file (default is ./linktadoru.yml)
-  -d, --database string            Path to SQLite database file (default "./linktadoru.db")
-  -r, --delay float                Delay between requests in seconds (default 0.1)
-      --exclude-patterns strings   Regex patterns for URLs to exclude
-  -H, --header strings             Custom HTTP headers in 'Name: Value' format (use multiple times for multiple headers)
-  -h, --help                       help for linktadoru
-      --ignore-robots-txt              Ignore robots.txt rules
-      --include-patterns strings   Regex patterns for URLs to include
-  -l, --limit int                  Stop after N pages (0=unlimited)
-      --show-config                Display current configuration in YAML format and exit
-  -t, --timeout duration           HTTP request timeout (default 30s)
-  -u, --user-agent string          HTTP User-Agent header (default "LinkTadoru/1.0")
-  -v, --version                    version for linktadoru
-```
+| Option | CLI Flag | Environment Variable | Default | Description |
+|--------|----------|---------------------|---------|-------------|
+| **Basic Settings** |
+| concurrency | `-c, --concurrency` | `LT_CONCURRENCY` | 2 | Number of concurrent workers |
+| request_delay | `-r, --delay` | `LT_REQUEST_DELAY` | 0.1 | Delay between requests in seconds (number) |
+| request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout (Go duration) |
+| user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
+| ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
+| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Allow crawling hosts other than the seed hosts |
+| limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
+| max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes (10 MiB) |
+| database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
+| **URL Filtering** |
+| include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
+| exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |
+| allowed_schemes | - | - | ["https://", "http://"] | Allowed URL schemes (config file only) |
+| **Authentication** |
+| auth.type | `--auth-type` | `LT_AUTH_TYPE` | "" | Authentication type: basic, bearer, api-key |
+| auth.basic.username | `--auth-username` | `LT_AUTH_BASIC_USERNAME` | "" | Basic auth username |
+| auth.basic.password | `--auth-password` | `LT_AUTH_BASIC_PASSWORD` | "" | Basic auth password |
+| auth.bearer.token | `--auth-token` | `LT_AUTH_BEARER_TOKEN` | "" | Bearer token |
+| auth.apikey.header | `--auth-header` | `LT_AUTH_APIKEY_HEADER` | "" | API key header name |
+| auth.apikey.value | `--auth-value` | `LT_AUTH_APIKEY_VALUE` | "" | API key value |
+| **HTTP Headers** |
+| headers | `-H, --header` | `LT_HEADER_*` | [] | Custom HTTP headers |
+| **Logging** |
+| log_level | - | - | info | Log level: debug, info, warn, error (config file only) |
+| log_console | - | - | true | Log to console (config file only) |
+| log_file | - | - | "" | Path to log file, empty = no file logging (config file only) |
+| log_max_size | - | - | 100 | Max log file size in MB before rotation (config file only) |
+| log_max_backups | - | - | 5 | Number of rotated log files to keep (config file only) |
+| **Other** |
+| show_config | `--show-config` | - | false | Display current configuration and exit |
 
 ## Configuration File
 
-Create a `linktadoru.yml` file:
+Create a `linktadoru.yml` file (see [linktadoru.yml.example](../linktadoru.yml.example) for a complete annotated example):
 
 ```yaml
-# Basic crawling parameters (updated defaults)
-concurrency: 2              # Number of concurrent workers (default: 2, was 10)
-request_delay: 0.1           # Delay between requests in seconds (default: 0.1, was 1.0)
+# Basic crawling parameters
+concurrency: 2               # Number of concurrent workers
+request_delay: 0.1           # Delay between requests in seconds (number)
 request_timeout: "30s"       # HTTP request timeout (Go duration, e.g. "30s", "1m")
-user_agent: "LinkTadoru/1.0" # User-Agent header
-ignore_robots_txt: false        # Whether to ignore robots.txt rules
-limit: 0                    # Stop after N pages (0 = unlimited)
+user_agent: "LinkTadoru/1.0"
+ignore_robots_txt: false
+follow_external_hosts: false # Stay on the seed hosts by default
+limit: 0                     # Stop after N pages (0 = unlimited)
+max_response_size: 10485760  # Max response body size in bytes (10 MiB)
 
-# Authentication configuration
-auth:
-  type: ""                  # Authentication type: "", "basic", "bearer", or "api-key"
-  basic:
-    username: "user"        # Basic auth username
-    password: "pass"        # Basic auth password
-  bearer:
-    token: "your_token_here"  # Bearer token
-  apikey:
-    header: "X-API-Key"     # Header name for API key
-    value: "your_key_here"  # API key value
+# URL filtering (regex; double the backslashes in double-quoted YAML strings)
+include_patterns:
+  - "^https?://[^/]*httpbin\\.org/.*"
+exclude_patterns:
+  - "\\.pdf$"
+  - "/admin/.*"
 
 # Custom HTTP headers
 headers:
   - "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
   - "Accept-Language: en-us,en;q=0.5"
-  # Add custom headers as needed
 
-# URL filtering
-include_patterns:
-  - "^https?://[^/]*httpbin\.org/.*"
-  - "^https?://[^/]*subdomain\.httpbin\.org/.*"
-
-exclude_patterns:
-  - "\.pdf$"
-  - "/admin/.*"
-  - ".*#.*"
-
-# Storage configuration
+# Storage
 database_path: "./linktadoru.db"
+
+# Logging (config file only, see the Logging section)
+log_level: "info"
 ```
 
 ## Environment Variables
 
-All configuration options can be set via environment variables with the `LT_` prefix:
+Options that are bound to a CLI flag can be set via environment variables with the `LT_` prefix (see the table above). Options without a flag — the `log_*` keys, `allowed_schemes`, and `seed_urls` — cannot be set via environment variables; use the configuration file instead.
 
 ```bash
 # Basic configuration
@@ -94,21 +93,12 @@ export LT_IGNORE_ROBOTS_TXT=false
 export LT_DATABASE_PATH="./mysite.db"
 export LT_LIMIT=1000
 
-# Authentication (recommended method)
+# Authentication (recommended method, see Authentication below)
 export LT_AUTH_TYPE=basic
 export LT_AUTH_BASIC_USERNAME="myuser"
 export LT_AUTH_BASIC_PASSWORD="mypass"
 
-# Bearer token authentication
-export LT_AUTH_TYPE=bearer
-export LT_AUTH_BEARER_TOKEN="your-jwt-token"
-
-# API key authentication
-export LT_AUTH_TYPE=api-key
-export LT_AUTH_APIKEY_HEADER="X-API-Key"
-export LT_AUTH_APIKEY_VALUE="your-api-key"
-
-# Custom HTTP headers (hierarchical)
+# Custom HTTP headers (LT_HEADER_<NAME> pattern)
 export LT_HEADER_ACCEPT="application/json"
 export LT_HEADER_ACCEPT_LANGUAGE="en-US,en;q=0.9"
 export LT_HEADER_X_CUSTOM="MyCustomValue"
@@ -116,103 +106,69 @@ export LT_HEADER_X_CUSTOM="MyCustomValue"
 ./linktadoru https://httpbin.org
 ```
 
-## Configuration Options
+## Logging
 
-| Option | CLI Flag | Environment Variable | Default | Description |
-|--------|----------|---------------------|---------|-------------|
-| **Authentication** |
-| auth_type | `--auth-type` | `LT_AUTH_TYPE` | "" | Authentication type: basic, bearer, api-key |
-| auth_username | `--auth-username` | `LT_AUTH_BASIC_USERNAME` | "" | Basic auth username |
-| auth_password | `--auth-password` | `LT_AUTH_BASIC_PASSWORD` | "" | Basic auth password |
-| auth_token | `--auth-token` | `LT_AUTH_BEARER_TOKEN` | "" | Bearer token |
-| auth_header | `--auth-header` | `LT_AUTH_APIKEY_HEADER` | "" | API key header name |
-| auth_value | `--auth-value` | `LT_AUTH_APIKEY_VALUE` | "" | API key value |
-| **HTTP Headers** |
-| headers | `-H, --header` | `LT_HEADER_*` | [] | Custom HTTP headers |
-| **Basic Settings** |
-| concurrency | `-c, --concurrency` | `LT_CONCURRENCY` | 2 | Number of concurrent workers |
-| request_delay | `-r, --delay` | `LT_REQUEST_DELAY` | 0.1 | Delay between requests in seconds |
-| request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout |
-| user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
-| ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
-| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Allow crawling hosts other than the seed hosts |
-| limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
-| max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes |
-| database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
-| **URL Filtering** |
-| include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
-| exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |
-| **Other** |
-| show_config | `--show-config` | - | false | Display current configuration and exit |
+Logging is configured in the configuration file only (no CLI flags or environment variables):
+
+```yaml
+log_level: "info"    # debug, info, warn, error (default: info)
+log_console: true    # Log to console (default: true)
+log_file: ""         # Path to log file; empty = no file logging
+log_max_size: 100    # Max log file size in MB before rotation (default: 100)
+log_max_backups: 5   # Number of rotated log files to keep (default: 5)
+```
 
 ## Authentication
 
-LinkTadoru supports multiple authentication methods for accessing password-protected websites:
+LinkTadoru supports multiple authentication methods for accessing password-protected websites. Only one method can be active at a time.
 
-- **Basic Authentication**: Standard HTTP Basic Auth with username/password
-- **Bearer Token**: Authorization header with bearer token (OAuth, JWT, etc.)
-- **API Key**: Custom header with API key
+### Basic Authentication
 
-### Authentication Types
-
-#### Basic Authentication
-
-**Environment Variables (Recommended):**
 ```bash
-# Using default environment variables
+# Environment variables (recommended)
 export LT_AUTH_TYPE=basic
-export LT_AUTH_BASIC_USERNAME="myuser" 
+export LT_AUTH_BASIC_USERNAME="myuser"
 export LT_AUTH_BASIC_PASSWORD="mypass"
 ./linktadoru https://protected.example.com
 
-# Alternative: use CLI flags to specify custom env vars
-export MY_USER="myuser"
-export MY_PASS="mypass"
-./linktadoru --auth-type basic --auth-username=$MY_USER --auth-password=$MY_PASS https://protected.example.com
-```
-
-**CLI Flags (Not Recommended for Production):**
-```bash
+# CLI flags (not recommended: visible in process lists and shell history)
 ./linktadoru --auth-type basic --auth-username myuser --auth-password mypass https://protected.example.com
 ```
 
-**Configuration File (Not Recommended):**
-```yaml
-# linktadoru.yml - NOT recommended for security reasons
-auth:
-  type: basic
-  basic:
-    username: "myuser"
-    password: "mypass"
-```
+### Bearer Token Authentication
 
-#### Bearer Token Authentication
-
-**Environment Variables (Recommended):**
 ```bash
+# Environment variables (recommended)
 export LT_AUTH_TYPE=bearer
-export LT_AUTH_BEARER_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+export LT_AUTH_BEARER_TOKEN="your-jwt-token"
 ./linktadoru https://api.example.com
-```
 
-**CLI Flags:**
-```bash
+# CLI flags
 ./linktadoru --auth-type bearer --auth-token "your-bearer-token" https://api.example.com
 ```
 
-#### API Key Authentication
+### API Key Authentication
 
-**Environment Variables (Recommended):**
 ```bash
+# Environment variables (recommended)
 export LT_AUTH_TYPE=api-key
 export LT_AUTH_APIKEY_HEADER="X-API-Key"
 export LT_AUTH_APIKEY_VALUE="your-api-key-here"
 ./linktadoru https://api.example.com
+
+# CLI flags
+./linktadoru --auth-type api-key --auth-header "X-API-Key" --auth-value "your-api-key" https://api.example.com
 ```
 
-**CLI Flags:**
-```bash
-./linktadoru --auth-type api-key --auth-header "X-API-Key" --auth-value "your-api-key" https://api.example.com
+### Configuration File
+
+Credentials can also be set in `linktadoru.yml` (not recommended for files committed to version control). Each auth block additionally supports `*_env` keys naming a custom environment variable to read the value from — see [linktadoru.yml.example](../linktadoru.yml.example).
+
+```yaml
+auth:
+  type: "bearer"
+  bearer:
+    token: "your-token-here"
 ```
 
 ### Security Best Practices
@@ -253,9 +209,8 @@ headers:
 
 The following headers cannot be overridden for security and protocol compliance:
 - `Host`
-- `Content-Length`  
+- `Content-Length`
 - `Connection`
-- `Transfer-Encoding`
 
 ### Combined Authentication and Headers Example
 
@@ -275,9 +230,9 @@ Only URLs matching at least one include pattern will be crawled:
 
 ```yaml
 include_patterns:
-  - "^https?://[^/]*httpbin\.org/.*"     # Main domain
-  - "^https?://[^/]*\.httpbin\.org/.*"   # All subdomains
-  - ".*/products/.*"                     # Specific path
+  - "^https?://[^/]*httpbin\\.org/.*"     # Main domain
+  - "^https?://[^/]*\\.httpbin\\.org/.*"  # All subdomains
+  - ".*/products/.*"                      # Specific path
 ```
 
 ### Exclude Patterns
@@ -285,37 +240,43 @@ URLs matching any exclude pattern will be skipped:
 
 ```yaml
 exclude_patterns:
-  - "\.pdf$"          # Skip PDFs
-  - "\.jpg$"          # Skip images
+  - "\\.pdf$"         # Skip PDFs
+  - "\\.jpg$"         # Skip images
   - "/admin/.*"       # Skip admin section
-  - ".*\?.*"          # Skip URLs with query strings
-  - ".*#.*"           # Skip URLs with fragments
+  - ".*\\?.*"         # Skip URLs with query strings
 ```
 
+Invalid regexes are rejected at startup with a clear error message.
+
 ## Performance Tuning
+
+`request_delay` is a number of seconds (e.g. `0.5`), not a duration string.
 
 ### Small Sites (< 1,000 pages)
 ```yaml
 concurrency: 5
-request_delay: 1s
+request_delay: 1
 ```
 
 ### Medium Sites (1,000 - 50,000 pages)
 ```yaml
-concurrency: 10-20
-request_delay: 500ms-1s
+concurrency: 10
+request_delay: 0.5
 ```
 
 ### Large Sites (> 50,000 pages)
+
+Start around these values and adjust; 20–50 workers with a 0.2–0.5s delay is a reasonable range if the target site tolerates it:
+
 ```yaml
-concurrency: 20-50
-request_delay: 200ms-500ms
+concurrency: 20
+request_delay: 0.2
 ```
 
 ### Respectful Crawling
 ```yaml
 concurrency: 2
-request_delay: 5s
+request_delay: 5
 ignore_robots_txt: false
-user_agent: "PoliteBot/1.0 (https://httpbin.org/bot)"
+user_agent: "PoliteBot/1.0 (https://example.com/bot)"
 ```
