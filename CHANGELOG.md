@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-03
+
 ### Fixed
 - Retry mechanism never fired — two independent bugs: the retryable-error
   filter matched error types that were never written, and the retry phase
