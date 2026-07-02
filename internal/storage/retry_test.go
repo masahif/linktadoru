@@ -58,6 +58,31 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 	}
 }
 
+// Rows written by older releases carry Go's local-timezone time.String() form.
+// A local date can be AHEAD of the current UTC date (e.g. JST just after local
+// midnight), making the legacy string compare greater than a UTC cutoff — so a
+// plain `< cutoff` would skip it and the resume would hang on the stuck
+// 'processing' row. Any non-current-format timestamp must be treated as stale.
+func TestCleanupStaleProcessingResetsLegacyFormatRows(t *testing.T) {
+	store := newTempStorage(t)
+
+	// Far-future local-format value: maximally adversarial for `< cutoff`.
+	legacy := "2030-01-01 09:00:00.5 +0900 JST"
+	if _, err := store.db.Exec(
+		"INSERT INTO pages (url, status, processing_started_at) VALUES ('https://example.com/legacy-ts', 'processing', ?)",
+		legacy,
+	); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+
+	if err := store.CleanupStaleProcessing(0); err != nil {
+		t.Fatalf("CleanupStaleProcessing: %v", err)
+	}
+	if got := mustStatus(t, store, "https://example.com/legacy-ts"); got != "pending" {
+		t.Errorf("legacy-format processing row status = %q, want pending (reset)", got)
+	}
+}
+
 // Timestamps must be stored in the fixed-width UTC layout so string comparison
 // in SQL matches chronological order regardless of local timezone/DST.
 func TestTimestampsStoredInFixedWidthUTC(t *testing.T) {

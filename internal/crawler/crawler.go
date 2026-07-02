@@ -33,13 +33,11 @@ type DefaultCrawler struct {
 	excludePatterns []*regexp.Regexp
 
 	// State
-	stats         CrawlStats
-	statsMutex    sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	activeWorkers int
-	workersMutex  sync.Mutex
+	stats      CrawlStats
+	statsMutex sync.RWMutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup // tracks workers only (not the stats reporter)
 }
 
 // NewCrawler creates a new crawler instance with the provided configuration and storage.
@@ -249,33 +247,41 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	}
 
 	// Step 2: Start workers after queue is populated
-	c.activeWorkers = c.config.Concurrency
 	for i := 0; i < c.config.Concurrency; i++ {
 		c.wg.Add(1)
 		go c.worker(i)
 	}
 
-	// Start stats reporter
-	c.wg.Add(1)
-	go c.statsReporter()
-
-	// Wait for completion or context cancellation
-	done := make(chan struct{})
+	// The stats reporter lives outside the worker WaitGroup: it only exits on
+	// context cancellation, so tracking it in c.wg would keep wg.Wait from
+	// ever returning on natural completion. (An earlier design had the last
+	// exiting worker cancel the context to stop the reporter — but that made
+	// Start unable to tell natural completion from cancellation, so the retry
+	// phase below was unreachable and retries never ran.)
+	statsDone := make(chan struct{})
 	go func() {
-		c.wg.Wait()
-		close(done)
+		defer close(statsDone)
+		c.statsReporter()
 	}()
 
-	select {
-	case <-done:
+	// Always wait for the workers themselves. On external cancellation they
+	// exit promptly (in-flight requests carry c.ctx), and waiting here is what
+	// makes shutdown graceful: Start does not return while a worker may still
+	// be writing to the database.
+	c.wg.Wait()
+
+	if c.ctx.Err() != nil {
+		slog.Info("Crawling cancelled")
+	} else {
 		slog.Info("Crawling completed - checking for retries")
-		// After normal crawling completes, attempt retries
 		if err := c.performRetries(); err != nil {
 			slog.Error("Error during retry processing", "error", err)
 		}
-	case <-c.ctx.Done():
-		slog.Info("Crawling cancelled")
 	}
+
+	// Stop the stats reporter and wait for it before returning.
+	c.cancel()
+	<-statsDone
 
 	return nil
 }
@@ -313,9 +319,9 @@ func (c *DefaultCrawler) performRetries() error {
 
 		if hasItems {
 			slog.Info("Starting retry processing")
-			// Start workers again for retry processing
-			c.wg = sync.WaitGroup{} // Reset wait group
-			c.activeWorkers = c.config.Concurrency
+			// Start workers again for retry processing. c.wg is empty here
+			// (Start waited for all workers before calling us) and c.ctx is
+			// still live, so the retry workers actually run.
 			for i := 0; i < c.config.Concurrency; i++ {
 				c.wg.Add(1)
 				go c.worker(i)
@@ -356,7 +362,7 @@ func (c *DefaultCrawler) GetStats() CrawlStats {
 // 3. No queued items available (SELECT returns empty result)
 func (c *DefaultCrawler) worker(id int) {
 	defer c.wg.Done()
-	defer c.handleWorkerShutdown(id)
+	defer slog.Debug("Worker stopped", "worker_id", id)
 
 	slog.Debug("Worker started", "worker_id", id)
 
@@ -388,18 +394,6 @@ func (c *DefaultCrawler) worker(id int) {
 			c.processURLItem(id, item)
 		}
 	}
-}
-
-// handleWorkerShutdown handles worker cleanup when shutting down
-func (c *DefaultCrawler) handleWorkerShutdown(id int) {
-	c.workersMutex.Lock()
-	c.activeWorkers--
-	if c.activeWorkers == 0 {
-		// All workers are done, cancel context to stop stats reporter
-		c.cancel()
-	}
-	c.workersMutex.Unlock()
-	slog.Debug("Worker stopped", "worker_id", id)
 }
 
 // shouldStopWorker checks if worker should stop due to limit reached
@@ -491,11 +485,18 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 	}
 
 	// Honor the robots.txt Crawl-delay directive when it asks for a slower
-	// pace than our configured default. SetDomainDelay is a no-op when the
-	// delay is unchanged, so calling it per URL does not reset the limiter.
+	// pace than our configured default, capped so a hostile or mistyped value
+	// (e.g. Crawl-delay: 86400) cannot park the crawl for hours per request.
+	// SetDomainDelay is a no-op when the delay is unchanged, so calling it per
+	// URL does not reset the limiter.
+	const maxCrawlDelay = 60 * time.Second
 	if u, err := url.Parse(item.URL); err == nil {
 		defaultDelay := time.Duration(c.config.RequestDelay * float64(time.Second))
 		if d := c.robotsParser.GetCrawlDelay(u.Host); d > defaultDelay {
+			if d > maxCrawlDelay {
+				slog.Warn("Capping excessive robots.txt crawl-delay", "domain", u.Host, "requested", d, "capped_to", maxCrawlDelay)
+				d = maxCrawlDelay
+			}
 			c.rateLimiter.SetDomainDelay(u.Host, d)
 		}
 	}
@@ -599,8 +600,6 @@ func (c *DefaultCrawler) logProcessingResult(id int, url string, result *PageRes
 
 // statsReporter periodically reports crawling statistics
 func (c *DefaultCrawler) statsReporter() {
-	defer c.wg.Done()
-
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 

@@ -546,11 +546,18 @@ func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 }
 
 // CleanupStaleProcessing resets processing items that have been stuck back to
-// 'pending'. A row with a NULL processing_started_at is always reset: `NULL < ?`
-// is never true in SQL, so without the explicit IS NULL clause such a row would
-// survive cleanup and keep HasQueuedItems() perpetually true, hanging the
-// crawler. The timestamp should never be NULL on the normal path, but the
-// invariant is cheap to enforce here.
+// 'pending'. Three clauses cover three row shapes that must all be reset:
+//   - processing_started_at < cutoff: normal stale rows in the current
+//     sqlTimeFormat ("YYYY-MM-DDT…Z"), where string order == time order.
+//   - IS NULL: `NULL < ?` is never true in SQL, so without the explicit
+//     clause an anomalous NULL row would survive forever and keep
+//     HasQueuedItems() true, hanging the crawler.
+//   - NOT LIKE '____-__-__T%': rows written by older releases, which stored
+//     Go's local-timezone time.String() form ("YYYY-MM-DD hh:mm:ss +0900 JST").
+//     Those strings do not compare meaningfully against a UTC cutoff (a local
+//     date can be ahead of the UTC date), so any row not in the current
+//     format is treated as stale outright — by definition it predates this
+//     process.
 func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
 	cutoff := sqlTime(time.Now().Add(-timeout))
 
@@ -558,7 +565,9 @@ func (s *SQLiteStorage) CleanupStaleProcessing(timeout time.Duration) error {
 		UPDATE pages
 		SET status = 'pending', processing_started_at = NULL
 		WHERE status = 'processing'
-		AND (processing_started_at < ? OR processing_started_at IS NULL)
+		AND (processing_started_at < ?
+		     OR processing_started_at IS NULL
+		     OR processing_started_at NOT LIKE '____-__-__T%')
 	`, cutoff)
 
 	if err != nil {

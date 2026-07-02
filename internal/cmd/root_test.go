@@ -105,7 +105,7 @@ func TestInitializeCrawler(t *testing.T) {
 		Limit:           10,
 	}
 
-	crawler, err := initializeCrawler(cfg)
+	crawler, store, err := initializeCrawler(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize crawler: %v", err)
 	}
@@ -113,10 +113,16 @@ func TestInitializeCrawler(t *testing.T) {
 	if crawler == nil {
 		t.Error("Crawler should not be nil")
 	}
+	if store == nil {
+		t.Error("Storage should not be nil")
+	}
 
 	// Clean up
 	if crawler != nil {
 		_ = crawler.Stop()
+	}
+	if store != nil {
+		_ = store.Close()
 	}
 }
 

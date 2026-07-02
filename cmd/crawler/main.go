@@ -22,7 +22,8 @@ func main() {
 
 	// Cancel the crawl context on SIGINT/SIGTERM so workers stop cleanly and
 	// the database is closed, instead of the process being killed mid-write.
-	// A second signal falls through to the default handler (immediate exit).
+	// Signals stay captured until stop() runs (after ExecuteContext returns),
+	// so repeated Ctrl-C during shutdown is absorbed rather than fatal.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
