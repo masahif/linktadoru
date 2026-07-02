@@ -26,14 +26,18 @@ type DefaultCrawler struct {
 	robotsParser *RobotsParser
 	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
 
+	// Include/exclude patterns compiled once at construction. Compiling here
+	// (a) rejects an invalid pattern at startup instead of silently never
+	// matching it, and (b) avoids recompiling every pattern for every URL.
+	includePatterns []*regexp.Regexp
+	excludePatterns []*regexp.Regexp
+
 	// State
-	stats         CrawlStats
-	statsMutex    sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	activeWorkers int
-	workersMutex  sync.Mutex
+	stats      CrawlStats
+	statsMutex sync.RWMutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup // tracks workers only (not the stats reporter)
 }
 
 // NewCrawler creates a new crawler instance with the provided configuration and storage.
@@ -44,6 +48,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 	// Initialize HTTP client
 	httpClient := NewHTTPClient(config.UserAgent, config.RequestTimeout)
+	httpClient.SetMaxResponseSize(config.MaxResponseSize)
 
 	// Configure basic authentication if provided
 	if config.Auth != nil {
@@ -117,20 +122,47 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 		}
 	}
 
+	// Compile URL filter patterns up front so an invalid regex fails the run
+	// loudly instead of being silently ignored on every URL.
+	includePatterns, err := compilePatterns(config.IncludePatterns)
+	if err != nil {
+		return nil, fmt.Errorf("invalid include_patterns: %w", err)
+	}
+	excludePatterns, err := compilePatterns(config.ExcludePatterns)
+	if err != nil {
+		return nil, fmt.Errorf("invalid exclude_patterns: %w", err)
+	}
+
 	crawler := &DefaultCrawler{
-		config:       config,
-		storage:      storage,
-		httpClient:   httpClient,
-		processor:    processor,
-		rateLimiter:  rateLimiter,
-		robotsParser: robotsParser,
-		allowedHosts: allowedHosts,
+		config:          config,
+		storage:         storage,
+		httpClient:      httpClient,
+		processor:       processor,
+		rateLimiter:     rateLimiter,
+		robotsParser:    robotsParser,
+		allowedHosts:    allowedHosts,
+		includePatterns: includePatterns,
+		excludePatterns: excludePatterns,
 		stats: CrawlStats{
 			StartTime: time.Now(),
 		},
 	}
 
 	return crawler, nil
+}
+
+// compilePatterns compiles a list of regex patterns, reporting the offending
+// pattern on failure.
+func compilePatterns(patterns []string) ([]*regexp.Regexp, error) {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, p := range patterns {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			return nil, fmt.Errorf("pattern %q: %w", p, err)
+		}
+		compiled = append(compiled, re)
+	}
+	return compiled, nil
 }
 
 // isAllowedHost checks if the given URL's host is allowed for crawling
@@ -215,33 +247,41 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	}
 
 	// Step 2: Start workers after queue is populated
-	c.activeWorkers = c.config.Concurrency
 	for i := 0; i < c.config.Concurrency; i++ {
 		c.wg.Add(1)
 		go c.worker(i)
 	}
 
-	// Start stats reporter
-	c.wg.Add(1)
-	go c.statsReporter()
-
-	// Wait for completion or context cancellation
-	done := make(chan struct{})
+	// The stats reporter lives outside the worker WaitGroup: it only exits on
+	// context cancellation, so tracking it in c.wg would keep wg.Wait from
+	// ever returning on natural completion. (An earlier design had the last
+	// exiting worker cancel the context to stop the reporter — but that made
+	// Start unable to tell natural completion from cancellation, so the retry
+	// phase below was unreachable and retries never ran.)
+	statsDone := make(chan struct{})
 	go func() {
-		c.wg.Wait()
-		close(done)
+		defer close(statsDone)
+		c.statsReporter()
 	}()
 
-	select {
-	case <-done:
+	// Always wait for the workers themselves. On external cancellation they
+	// exit promptly (in-flight requests carry c.ctx), and waiting here is what
+	// makes shutdown graceful: Start does not return while a worker may still
+	// be writing to the database.
+	c.wg.Wait()
+
+	if c.ctx.Err() != nil {
+		slog.Info("Crawling cancelled")
+	} else {
 		slog.Info("Crawling completed - checking for retries")
-		// After normal crawling completes, attempt retries
 		if err := c.performRetries(); err != nil {
 			slog.Error("Error during retry processing", "error", err)
 		}
-	case <-c.ctx.Done():
-		slog.Info("Crawling cancelled")
 	}
+
+	// Stop the stats reporter and wait for it before returning.
+	c.cancel()
+	<-statsDone
 
 	return nil
 }
@@ -279,9 +319,9 @@ func (c *DefaultCrawler) performRetries() error {
 
 		if hasItems {
 			slog.Info("Starting retry processing")
-			// Start workers again for retry processing
-			c.wg = sync.WaitGroup{} // Reset wait group
-			c.activeWorkers = c.config.Concurrency
+			// Start workers again for retry processing. c.wg is empty here
+			// (Start waited for all workers before calling us) and c.ctx is
+			// still live, so the retry workers actually run.
 			for i := 0; i < c.config.Concurrency; i++ {
 				c.wg.Add(1)
 				go c.worker(i)
@@ -322,7 +362,7 @@ func (c *DefaultCrawler) GetStats() CrawlStats {
 // 3. No queued items available (SELECT returns empty result)
 func (c *DefaultCrawler) worker(id int) {
 	defer c.wg.Done()
-	defer c.handleWorkerShutdown(id)
+	defer slog.Debug("Worker stopped", "worker_id", id)
 
 	slog.Debug("Worker started", "worker_id", id)
 
@@ -354,18 +394,6 @@ func (c *DefaultCrawler) worker(id int) {
 			c.processURLItem(id, item)
 		}
 	}
-}
-
-// handleWorkerShutdown handles worker cleanup when shutting down
-func (c *DefaultCrawler) handleWorkerShutdown(id int) {
-	c.workersMutex.Lock()
-	c.activeWorkers--
-	if c.activeWorkers == 0 {
-		// All workers are done, cancel context to stop stats reporter
-		c.cancel()
-	}
-	c.workersMutex.Unlock()
-	slog.Debug("Worker stopped", "worker_id", id)
 }
 
 // shouldStopWorker checks if worker should stop due to limit reached
@@ -455,6 +483,32 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 		c.workerSleep()
 		return false
 	}
+
+	// Honor the robots.txt Crawl-delay directive when it asks for a slower
+	// pace than our configured default, capped so a hostile or mistyped value
+	// (e.g. Crawl-delay: 86400) cannot park the crawl for hours per request.
+	// The cap never goes below the user's configured delay — robots.txt may
+	// only slow us down, never speed us up. SetDomainDelay reports whether it
+	// actually changed anything, so the warning fires once per domain rather
+	// than on every URL.
+	const maxCrawlDelay = 60 * time.Second
+	if u, err := url.Parse(item.URL); err == nil {
+		defaultDelay := time.Duration(c.config.RequestDelay * float64(time.Second))
+		if d := c.robotsParser.GetCrawlDelay(u.Host); d > defaultDelay {
+			limit := time.Duration(maxCrawlDelay)
+			if defaultDelay > limit {
+				limit = defaultDelay
+			}
+			capped := d > limit
+			if capped {
+				d = limit
+			}
+			if c.rateLimiter.SetDomainDelay(u.Host, d) && capped {
+				slog.Warn("Capped excessive robots.txt crawl-delay", "domain", u.Host, "applied", d)
+			}
+		}
+	}
+
 	return true
 }
 
@@ -470,6 +524,14 @@ func (c *DefaultCrawler) handleProcessingError(id int, item *URLItem, err error)
 
 // handleProcessingResult handles successful page processing results
 func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *PageResult) {
+	// A fetch aborted by run cancellation is not a page failure: leave the row
+	// 'processing' (the next run's CleanupStaleProcessing requeues it) instead
+	// of burning a retry credit and recording a phantom "context canceled"
+	// page error. Page == nil implies there are no links to save either.
+	if result.Page == nil && c.ctx.Err() != nil {
+		return
+	}
+
 	// Save links and queue newly discovered URLs BEFORE marking this page
 	// completed. While this runs, item.ID is still 'processing', so
 	// HasQueuedItems() stays true across the whole window — an idle sibling
@@ -554,8 +616,6 @@ func (c *DefaultCrawler) logProcessingResult(id int, url string, result *PageRes
 
 // statsReporter periodically reports crawling statistics
 func (c *DefaultCrawler) statsReporter() {
-	defer c.wg.Done()
-
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -587,10 +647,10 @@ func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
 	}
 
 	// If include patterns are specified, URL must match at least one
-	if len(c.config.IncludePatterns) > 0 {
+	if len(c.includePatterns) > 0 {
 		matched := false
-		for _, pattern := range c.config.IncludePatterns {
-			if m, _ := regexp.MatchString(pattern, urlStr); m {
+		for _, re := range c.includePatterns {
+			if re.MatchString(urlStr) {
 				matched = true
 				break
 			}
@@ -601,8 +661,8 @@ func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
 	}
 
 	// Check exclude patterns - URL must not match any
-	for _, pattern := range c.config.ExcludePatterns {
-		if matched, _ := regexp.MatchString(pattern, urlStr); matched {
+	for _, re := range c.excludePatterns {
+		if re.MatchString(urlStr) {
 			return false
 		}
 	}

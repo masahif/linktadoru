@@ -76,7 +76,7 @@ LinkTadoru follows a hierarchical configuration priority:
 concurrency: 2
 request_delay: 0.1           # seconds
 user_agent: "LinkTadoru/1.0"
-ignore_robots: false
+ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                    # 0 = unlimited
 
@@ -107,7 +107,7 @@ All configuration can be set via environment variables with `LT_` prefix:
 # Basic settings
 export LT_CONCURRENCY=2
 export LT_REQUEST_DELAY=0.5
-export LT_IGNORE_ROBOTS=true
+export LT_IGNORE_ROBOTS_TXT=true
 
 # Hierarchical settings (using underscores)
 export LT_AUTH_TYPE=basic

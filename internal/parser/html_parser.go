@@ -212,6 +212,12 @@ func (p *HTMLParser) resolveURL(href string) (string, error) {
 
 	// Resolve relative to base URL
 	resolved := p.baseURL.ResolveReference(u)
+
+	// Drop the fragment: "…/page#a" and "…/page#b" are the same resource, and
+	// keeping fragments would create duplicate rows (pages.url is UNIQUE) and
+	// duplicate crawls of the same page.
+	resolved.Fragment = ""
+
 	return resolved.String(), nil
 }
 
