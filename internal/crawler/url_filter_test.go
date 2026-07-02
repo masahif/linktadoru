@@ -2,10 +2,22 @@ package crawler
 
 import (
 	"net/url"
+	"regexp"
 	"testing"
 
 	"github.com/masahif/linktadoru/internal/config"
 )
+
+// mustCompilePatterns compiles URL filter patterns for tests that construct
+// DefaultCrawler directly instead of going through NewCrawler.
+func mustCompilePatterns(t *testing.T, patterns []string) []*regexp.Regexp {
+	t.Helper()
+	compiled, err := compilePatterns(patterns)
+	if err != nil {
+		t.Fatalf("failed to compile patterns %v: %v", patterns, err)
+	}
+	return compiled
+}
 
 func TestShouldCrawlURL(t *testing.T) {
 	tests := []struct {
@@ -130,7 +142,9 @@ func TestShouldCrawlURL(t *testing.T) {
 					ExcludePatterns:     tt.excludePatterns,
 					FollowExternalHosts: true, // Allow all hosts for legacy tests
 				},
-				allowedHosts: []string{}, // Empty list but external hosts allowed
+				allowedHosts:    []string{}, // Empty list but external hosts allowed
+				includePatterns: mustCompilePatterns(t, tt.includePatterns),
+				excludePatterns: mustCompilePatterns(t, tt.excludePatterns),
 			}
 
 			result := crawler.shouldCrawlURL(tt.url)
@@ -378,8 +392,10 @@ func TestShouldCrawlURLWithHostFiltering(t *testing.T) {
 			}
 
 			crawler := &DefaultCrawler{
-				config:       config,
-				allowedHosts: allowedHosts,
+				config:          config,
+				allowedHosts:    allowedHosts,
+				includePatterns: mustCompilePatterns(t, config.IncludePatterns),
+				excludePatterns: mustCompilePatterns(t, config.ExcludePatterns),
 			}
 
 			result := crawler.shouldCrawlURL(tt.targetURL)

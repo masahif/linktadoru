@@ -36,7 +36,6 @@ type Storage interface {
 
 	// Queue status
 	GetQueueStatus() (pending int, processing int, completed int, errors int, err error)
-	GetProcessingItems() ([]URLItem, error)
 	CleanupStaleProcessing(timeout time.Duration) error
 	HasQueuedItems() (bool, error) // Check if queue has any work items (pending or processing)
 

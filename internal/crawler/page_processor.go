@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -40,10 +41,17 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 	// Fetch the page
 	resp, err := p.httpClient.Get(ctx, url)
 	if err != nil {
+		// Distinguish the deterministic over-size case from transient network
+		// failures: 'network_error' is retried, 'response_too_large' is not
+		// (see storage.retryableErrorTypes).
+		errorType := "network_error"
+		if errors.Is(err, ErrResponseTooLarge) {
+			errorType = "response_too_large"
+		}
 		return &PageResult{
 			Error: &CrawlError{
 				URL:          url,
-				ErrorType:    "network_error",
+				ErrorType:    errorType,
 				ErrorMessage: err.Error(),
 				OccurredAt:   time.Now().UTC(),
 			},

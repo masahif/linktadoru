@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,13 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+// ExecuteContext is Execute with a caller-supplied context, so signal-driven
+// cancellation (SIGINT/SIGTERM in main) propagates to the crawler via
+// cmd.Context().
+func ExecuteContext(ctx context.Context) error {
+	return rootCmd.ExecuteContext(ctx)
+}
+
 // SetVersionInfo sets version information for the CLI
 func SetVersionInfo(v, bt string) {
 	version = v
@@ -67,6 +75,7 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
+	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
 	rootCmd.Flags().String("auth-type", "", "Authentication type: 'basic', 'bearer', or 'api-key'")
@@ -104,6 +113,7 @@ func init() {
 		{"ignore_robots_txt", "ignore-robots-txt"},
 		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
+		{"max_response_size", "max-response-size"},
 		{"include_patterns", "include-patterns"},
 		{"exclude_patterns", "exclude-patterns"},
 		{"database_path", "database"},
@@ -294,24 +304,35 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize and start the crawler
-	crawler, err := initializeCrawler(cfg)
+	crawler, store, err := initializeCrawler(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize crawler: %w", err)
 	}
+	// Close in LIFO order: stop the crawler first, then close the database it
+	// writes to. Start only returns after its workers have finished, so no
+	// write can race the Close.
+	defer func() { _ = store.Close() }()
 	defer func() { _ = crawler.Stop() }()
 
 	// Start crawling
 	return crawler.Start(cmd.Context(), cfg.SeedURLs)
 }
 
-// initializeCrawler creates and configures a crawler instance
-func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, error) {
+// initializeCrawler creates and configures a crawler instance. The returned
+// storage is owned by the caller, which must Close it after stopping the
+// crawler.
+func initializeCrawler(cfg *config.CrawlConfig) (crawler.Crawler, *storage.SQLiteStorage, error) {
 	// Initialize storage
 	store, err := storage.NewSQLiteStorage(cfg.DatabasePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize storage: %w", err)
+		return nil, nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
 	// Pass the complete config directly to the crawler
-	return crawler.NewCrawler(cfg, store)
+	c, err := crawler.NewCrawler(cfg, store)
+	if err != nil {
+		_ = store.Close()
+		return nil, nil, err
+	}
+	return c, store, nil
 }

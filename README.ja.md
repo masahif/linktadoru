@@ -76,7 +76,7 @@ LinkTadoruは以下の階層設定優先順位に従います：
 concurrency: 2
 request_delay: 0.1           # 秒
 user_agent: "LinkTadoru/1.0"
-ignore_robots: false
+ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                    # 0 = 無制限
 
@@ -107,7 +107,7 @@ headers:
 # 基本設定
 export LT_CONCURRENCY=2
 export LT_REQUEST_DELAY=0.5
-export LT_IGNORE_ROBOTS=true
+export LT_IGNORE_ROBOTS_TXT=true
 
 # 階層設定（アンダースコアを使用）
 export LT_AUTH_TYPE=basic

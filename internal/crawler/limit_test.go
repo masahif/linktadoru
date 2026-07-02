@@ -50,10 +50,6 @@ func (m *MockStorage) GetQueueStatus() (pending int, processing int, completed i
 	return 0, 0, 0, 0, nil
 }
 
-func (m *MockStorage) GetProcessingItems() ([]URLItem, error) {
-	return nil, nil
-}
-
 func (m *MockStorage) CleanupStaleProcessing(timeout time.Duration) error {
 	return nil
 }

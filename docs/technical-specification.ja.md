@@ -53,16 +53,22 @@ LinkTadoruは、SEO分析用に設計された高性能で並行処理可能なW
 
 ```go
 type CrawlConfig struct {
-    SeedURLs        []string      
-    Concurrency     int           
-    RequestDelay    time.Duration 
-    RequestTimeout  time.Duration 
-    UserAgent       string        
-    RespectRobots   bool          
-    IncludePatterns []string      
-    ExcludePatterns []string      
-    DatabasePath    string        
-    Limit           int
+    SeedURLs            []string
+    Concurrency         int
+    RequestDelay        float64       // 秒
+    RequestTimeout      time.Duration
+    UserAgent           string
+    IgnoreRobotsTxt     bool
+    FollowExternalHosts bool
+    Limit               int
+    MaxResponseSize     int64         // バイト
+    Auth                *Auth
+    IncludePatterns     []string
+    ExcludePatterns     []string
+    AllowedSchemes      []string
+    Headers             []string
+    DatabasePath        string
+    // ... ロギング設定 (LogLevel, LogFile, ...)
 }
 ```
 
@@ -94,9 +100,11 @@ type CrawlConfig struct {
 pagesテーブルは二重の目的を果たします：
 
 **キュー管理:**
-- URLは`status='queued'`で開始
-- ワーカーがアトミックにアイテムを取得: `queued` → `processing`
-- 完了時の更新: `processing` → `completed` または `error`
+- クロール済みページから発見されたリンクは`status='discovered'`で記録される（グラフのノードであり、クロール対象ではない）
+- クロール対象に選ばれたURL（シード、またはinclude/excludeフィルタを通過した発見リンク）は`status='pending'`に昇格
+- ワーカーがアトミックにアイテムを取得: `pending` → `processing`
+- 完了時の更新: `processing` → `completed`、`skipped`（robots.txt）、または `error`
+- 注: `completed` は「取得が完了した」ことを意味する。404などのHTTPエラーも`completed`となり、結果は`status_code`カラムに記録される
 
 **結果ストレージ:**
 - クロール結果フィールドは処理されるまで`NULL`
@@ -112,10 +120,10 @@ UPDATE pages
 SET status = 'processing', processing_started_at = ? 
 WHERE id = (
     SELECT id FROM pages 
-    WHERE status = 'queued' 
+    WHERE status = 'pending' 
     ORDER BY added_at ASC 
     LIMIT 1
-) AND status = 'queued'
+) AND status = 'pending'
 RETURNING id, url
 ```
 
@@ -124,7 +132,7 @@ RETURNING id, url
 - **競合状態の防止**: アトミック操作で排他アクセスを保証
 - **プロセス間安全性**: SQLiteトランザクションベースの自動ロック
 - **高性能**: 単一クエリでの取得と更新
-- **状態追跡**: 明確な遷移: `queued` → `processing` → `completed`/`error`
+- **状態追跡**: 明確な遷移: `discovered` → `pending` → `processing` → `completed`/`skipped`/`error`
 - **再開可能性**: 永続的な状態でプロセス中断を生き延びる
 
 ### 3. HTTPクライアント
@@ -173,7 +181,7 @@ SQLiteベースのストレージ：
 CREATE TABLE pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'error')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error', 'discovered')),
     
     -- キュー関連フィールド
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -402,18 +402,6 @@ func testQueueStatusTracking(t *testing.T) {
 	_ = completed // Ignore for this test
 	_ = errors    // Ignore for this test
 
-	// Get processing items
-	processingItems, err := statusStorage.GetProcessingItems()
-	if err != nil {
-		t.Errorf("Failed to get processing items: %v", err)
-	}
-	if len(processingItems) != 1 {
-		t.Errorf("Expected 1 processing item, got %d", len(processingItems))
-	}
-	if processingItems[0].URL != nextItem.URL {
-		t.Errorf("Processing item URL mismatch: expected %s, got %s", nextItem.URL, processingItems[0].URL)
-	}
-
 	// Complete the item
 	err = statusStorage.UpdatePageStatus(nextItem.ID, "completed")
 	if err != nil {

@@ -30,7 +30,7 @@ concurrency: 3
 request_delay: 1s
 request_timeout: 15s
 user_agent: "MyBot/1.0"
-ignore_robots: false
+ignore_robots_txt: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
@@ -79,7 +79,7 @@ LinkTadoruは既存のデータベースから自動的に再開します：
 
 ```bash
 ./linktadoru \
-  --ignore-robots \
+  --ignore-robots-txt \
   --concurrency 20 \
   --delay 500ms \
   https://httpbin.org
@@ -152,7 +152,7 @@ limit: 0  # 無制限
 concurrency: 2
 request_delay: 5s
 request_timeout: 30s
-ignore_robots: false
+ignore_robots_txt: false
 user_agent: "PoliteBot/1.0"
 ```
 
@@ -162,7 +162,7 @@ user_agent: "PoliteBot/1.0"
 
 1. **データベースロック**: 他のインスタンスを停止するか、異なるデータベースファイルを使用
 2. **エラーが多すぎる**: タイムアウトを増やすか、並行性を減らす
-3. **robots.txtによるブロック**: `--ignore-robots`フラグを使用（責任を持って使用）
+3. **robots.txtによるブロック**: `--ignore-robots-txt`フラグを使用（責任を持って使用）
 4. **メモリ使用量**: 大規模サイトでは並行性を減らす
 
 ### 進行状況の監視

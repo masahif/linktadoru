@@ -60,6 +60,7 @@ type CrawlConfig struct {
 	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
 	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
 	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
+	MaxResponseSize     int64         `mapstructure:"max_response_size" yaml:"max_response_size"`         // Max response body size in bytes (0 = default 10MiB)
 
 	// Authentication
 	Auth *Auth `mapstructure:"auth" yaml:"auth"` // Authentication configuration
@@ -91,8 +92,9 @@ func DefaultConfig() *CrawlConfig {
 		RequestTimeout:      30 * time.Second,
 		UserAgent:           "LinkTadoru/1.0",
 		IgnoreRobotsTxt:     false,
-		FollowExternalHosts: false, // Default to same-host only for safety
-		Limit:               0,     // unlimited
+		FollowExternalHosts: false,            // Default to same-host only for safety
+		Limit:               0,                // unlimited
+		MaxResponseSize:     10 * 1024 * 1024, // 10 MiB response body cap
 		DatabasePath:        "./linktadoru.db",
 		AllowedSchemes:      []string{"https://", "http://"}, // Default allowed URL schemes
 		// Logging defaults

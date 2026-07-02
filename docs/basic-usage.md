@@ -30,7 +30,7 @@ concurrency: 3
 request_delay: 1s
 request_timeout: 15s
 user_agent: "MyBot/1.0"
-ignore_robots: false
+ignore_robots_txt: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
@@ -79,7 +79,7 @@ LinkTadoru automatically resumes from existing database:
 
 ```bash
 ./linktadoru \
-  --ignore-robots \
+  --ignore-robots-txt \
   --concurrency 20 \
   --delay 500ms \
   https://httpbin.org
@@ -152,7 +152,7 @@ limit: 0  # unlimited
 concurrency: 2
 request_delay: 5s
 request_timeout: 30s
-ignore_robots: false
+ignore_robots_txt: false
 user_agent: "PoliteBot/1.0"
 ```
 
@@ -162,7 +162,7 @@ user_agent: "PoliteBot/1.0"
 
 1. **Database locked**: Stop other instances or use different database file
 2. **Too many errors**: Increase timeout or reduce concurrency
-3. **Blocked by robots.txt**: Use `--ignore-robots` flag (use responsibly)
+3. **Blocked by robots.txt**: Use `--ignore-robots-txt` flag (use responsibly)
 4. **Memory usage**: Reduce concurrency for large sites
 
 ### Monitoring Progress
