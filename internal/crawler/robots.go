@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
@@ -49,7 +50,9 @@ func (r *RobotsParser) IsAllowed(ctx context.Context, urlStr string, userAgent s
 	domain := parsedURL.Host
 	rules, err := r.getRules(ctx, domain, parsedURL.Scheme)
 	if err != nil {
-		// If we can't fetch robots.txt, assume allowed
+		// Fail open: if robots.txt cannot be fetched, assume allowed — but say
+		// so, since this silently bypasses the site's crawling policy.
+		slog.Warn("Failed to fetch robots.txt, assuming allowed", "domain", domain, "error", err)
 		return true, nil
 	}
 
@@ -172,6 +175,8 @@ func (r *RobotsParser) parseRobotsTxt(content string) *RobotRules {
 			if inUserAgent {
 				if delay, err := time.ParseDuration(value + "s"); err == nil {
 					rules.CrawlDelay = delay
+				} else {
+					slog.Warn("Ignoring malformed robots.txt crawl-delay", "value", value)
 				}
 			}
 
