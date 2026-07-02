@@ -94,9 +94,11 @@ The crawler implements a worker pool pattern with unified SQLite-based queue sys
 The pages table serves dual purposes:
 
 **Queue Management:**
-- URLs start with `status='queued'`
-- Workers atomically claim items: `queued` → `processing`
-- Completion updates: `processing` → `completed` or `error`
+- Link-graph nodes discovered on crawled pages start as `status='discovered'` (recorded, not crawled)
+- URLs selected for crawling (seeds, or discovered links passing the include/exclude filters) are promoted to `status='pending'`
+- Workers atomically claim items: `pending` → `processing`
+- Completion updates: `processing` → `completed`, `skipped` (robots.txt), or `error`
+- Note: `completed` means the fetch finished; HTTP errors such as 404 are still `completed` with the `status_code` column recording the result
 
 **Results Storage:**
 - Crawl result fields remain `NULL` until processed
@@ -112,10 +114,10 @@ UPDATE pages
 SET status = 'processing', processing_started_at = ? 
 WHERE id = (
     SELECT id FROM pages 
-    WHERE status = 'queued' 
+    WHERE status = 'pending' 
     ORDER BY added_at ASC 
     LIMIT 1
-) AND status = 'queued'
+) AND status = 'pending'
 RETURNING id, url
 ```
 
@@ -124,7 +126,7 @@ RETURNING id, url
 - **Race Condition Prevention**: Atomic operations ensure exclusive access
 - **Inter-process Safety**: SQLite transaction-based automatic locking
 - **High Performance**: Single query for acquire and update
-- **State Tracking**: Clear transitions: `queued` → `processing` → `completed`/`error`
+- **State Tracking**: Clear transitions: `discovered` → `pending` → `processing` → `completed`/`skipped`/`error`
 - **Resumability**: Persistent state survives process interruptions
 
 ### 3. HTTP Client
@@ -173,7 +175,7 @@ SQLite-based storage with:
 CREATE TABLE pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'error')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error', 'discovered')),
     
     -- Queue-related fields
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

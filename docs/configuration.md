@@ -26,7 +26,7 @@ Flags:
       --exclude-patterns strings   Regex patterns for URLs to exclude
   -H, --header strings             Custom HTTP headers in 'Name: Value' format (use multiple times for multiple headers)
   -h, --help                       help for linktadoru
-      --ignore-robots              Ignore robots.txt rules
+      --ignore-robots-txt              Ignore robots.txt rules
       --include-patterns strings   Regex patterns for URLs to include
   -l, --limit int                  Stop after N pages (0=unlimited)
       --show-config                Display current configuration in YAML format and exit
@@ -45,7 +45,7 @@ concurrency: 2              # Number of concurrent workers (default: 2, was 10)
 request_delay: 0.1           # Delay between requests in seconds (default: 0.1, was 1.0)
 request_timeout: 30.0        # HTTP request timeout in seconds
 user_agent: "LinkTadoru/1.0" # User-Agent header
-ignore_robots: false        # Whether to ignore robots.txt rules
+ignore_robots_txt: false        # Whether to ignore robots.txt rules
 limit: 0                    # Stop after N pages (0 = unlimited)
 
 # Authentication configuration
@@ -90,7 +90,7 @@ export LT_CONCURRENCY=2
 export LT_REQUEST_DELAY=0.1
 export LT_REQUEST_TIMEOUT=30.0
 export LT_USER_AGENT="MyBot/1.0"
-export LT_IGNORE_ROBOTS=false
+export LT_IGNORE_ROBOTS_TXT=false
 export LT_DATABASE_PATH="./mysite.db"
 export LT_LIMIT=1000
 
@@ -134,8 +134,10 @@ export LT_HEADER_X_CUSTOM="MyCustomValue"
 | request_delay | `-r, --delay` | `LT_REQUEST_DELAY` | 0.1 | Delay between requests in seconds |
 | request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout |
 | user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
-| ignore_robots | `--ignore-robots` | `LT_IGNORE_ROBOTS` | false | Ignore robots.txt rules |
+| ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
+| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Allow crawling hosts other than the seed hosts |
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
+| max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes |
 | database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
 | **URL Filtering** |
 | include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
@@ -314,6 +316,6 @@ request_delay: 200ms-500ms
 ```yaml
 concurrency: 2
 request_delay: 5s
-ignore_robots: false
+ignore_robots_txt: false
 user_agent: "PoliteBot/1.0 (https://httpbin.org/bot)"
 ```

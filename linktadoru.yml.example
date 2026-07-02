@@ -9,9 +9,17 @@ user_agent: "LinkTadoru/1.0"       # User-Agent header (version will be dynamica
 ignore_robots_txt: false    # Whether to ignore robots.txt rules (default: respect robots.txt)
 follow_external_hosts: false # Whether to crawl external hosts (default: same-host only for safety)
 limit: 0                    # Stop after N pages (0 = unlimited)
+max_response_size: 10485760 # Max response body size in bytes (default: 10 MiB); larger pages are recorded as errors
 
 # Database configuration
 database_path: "./linktadoru.db"  # Path to SQLite database file
+
+# Logging configuration
+log_level: "info"           # Log level: debug, info, warn, error (default: info)
+log_console: true           # Log to console (default: true)
+log_file: ""                # Path to log file (empty = no file logging)
+log_max_size: 100           # Max log file size in MB before rotation (default: 100)
+log_max_backups: 5          # Number of rotated log files to keep (default: 5)
 
 # URL filtering patterns
 include_patterns: []         # Regex patterns for URLs to include (empty = include all)

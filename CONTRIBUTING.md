@@ -4,7 +4,7 @@ First off, thank you for considering contributing to LinkTadoru! It's people lik
 
 ## Code of Conduct
 
-This project and everyone participating in it is governed by the [LinkTadoru Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+Please be respectful and constructive in all project interactions — issues, pull requests, and reviews.
 
 ## How Can I Contribute?
 
