@@ -487,17 +487,25 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 	// Honor the robots.txt Crawl-delay directive when it asks for a slower
 	// pace than our configured default, capped so a hostile or mistyped value
 	// (e.g. Crawl-delay: 86400) cannot park the crawl for hours per request.
-	// SetDomainDelay is a no-op when the delay is unchanged, so calling it per
-	// URL does not reset the limiter.
+	// The cap never goes below the user's configured delay — robots.txt may
+	// only slow us down, never speed us up. SetDomainDelay reports whether it
+	// actually changed anything, so the warning fires once per domain rather
+	// than on every URL.
 	const maxCrawlDelay = 60 * time.Second
 	if u, err := url.Parse(item.URL); err == nil {
 		defaultDelay := time.Duration(c.config.RequestDelay * float64(time.Second))
 		if d := c.robotsParser.GetCrawlDelay(u.Host); d > defaultDelay {
-			if d > maxCrawlDelay {
-				slog.Warn("Capping excessive robots.txt crawl-delay", "domain", u.Host, "requested", d, "capped_to", maxCrawlDelay)
-				d = maxCrawlDelay
+			limit := time.Duration(maxCrawlDelay)
+			if defaultDelay > limit {
+				limit = defaultDelay
 			}
-			c.rateLimiter.SetDomainDelay(u.Host, d)
+			capped := d > limit
+			if capped {
+				d = limit
+			}
+			if c.rateLimiter.SetDomainDelay(u.Host, d) && capped {
+				slog.Warn("Capped excessive robots.txt crawl-delay", "domain", u.Host, "applied", d)
+			}
 		}
 	}
 
@@ -516,6 +524,14 @@ func (c *DefaultCrawler) handleProcessingError(id int, item *URLItem, err error)
 
 // handleProcessingResult handles successful page processing results
 func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *PageResult) {
+	// A fetch aborted by run cancellation is not a page failure: leave the row
+	// 'processing' (the next run's CleanupStaleProcessing requeues it) instead
+	// of burning a retry credit and recording a phantom "context canceled"
+	// page error. Page == nil implies there are no links to save either.
+	if result.Page == nil && c.ctx.Err() != nil {
+		return
+	}
+
 	// Save links and queue newly discovered URLs BEFORE marking this page
 	// completed. While this runs, item.ID is still 'processing', so
 	// HasQueuedItems() stays true across the whole window — an idle sibling

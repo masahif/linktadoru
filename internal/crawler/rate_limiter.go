@@ -39,10 +39,11 @@ func (r *RateLimiter) Wait(ctx context.Context, urlStr string) error {
 	return limiter.Wait(ctx)
 }
 
-// SetDomainDelay sets a custom delay for a specific domain. Calling it again
-// with the same delay is a no-op — replacing the limiter would reset its token
-// bucket and effectively disable rate limiting when called on every request.
-func (r *RateLimiter) SetDomainDelay(domain string, delay time.Duration) {
+// SetDomainDelay sets a custom delay for a specific domain and reports whether
+// the delay changed. Calling it again with the same delay is a no-op —
+// replacing the limiter would reset its token bucket and effectively disable
+// rate limiting when called on every request.
+func (r *RateLimiter) SetDomainDelay(domain string, delay time.Duration) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -51,11 +52,12 @@ func (r *RateLimiter) SetDomainDelay(domain string, delay time.Duration) {
 	}
 
 	if current, ok := r.delays[domain]; ok && current == delay {
-		return
+		return false
 	}
 
 	r.delays[domain] = delay
 	r.limiters[domain] = rate.NewLimiter(rate.Every(delay), 1)
+	return true
 }
 
 // getLimiter gets or creates a rate limiter for a domain
