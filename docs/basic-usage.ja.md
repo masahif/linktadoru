@@ -14,10 +14,10 @@
 
 ### 2. カスタム設定での制限付きクロール
 
-2つの並行ワーカーで最大10ページをクロール：
+2つの並行ワーカー・2秒間隔で最大10ページをクロール（`--delay`は秒数を数値で指定）：
 
 ```bash
-./linktadoru --limit 10 --concurrency 2 --delay 2s https://httpbin.org
+./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
 ### 3. 設定ファイルの使用
@@ -27,15 +27,15 @@
 ```yaml
 # mysite-config.yml
 concurrency: 3
-request_delay: 1s
-request_timeout: 15s
+request_delay: 1             # 秒（数値）
+request_timeout: "15s"       # Go duration文字列
 user_agent: "MyBot/1.0"
 ignore_robots_txt: false
 limit: 50
 database_path: "./mysite-crawl.db"
 
 include_patterns:
-  - "^https?://[^/]*httpbin\.org/.*"
+  - "^https?://[^/]*httpbin\\.org/.*"
 
 exclude_patterns:
   - "\\.pdf$"
@@ -81,7 +81,7 @@ LinkTadoruは既存のデータベースから自動的に再開します：
 ./linktadoru \
   --ignore-robots-txt \
   --concurrency 20 \
-  --delay 500ms \
+  --delay 0.5 \
   https://httpbin.org
 ```
 
@@ -96,6 +96,30 @@ LinkTadoruは既存のデータベースから自動的に再開します：
   https://httpbin.org
 ```
 
+## クロールの挙動
+
+### ページステータスのライフサイクル
+
+各URLは`pages`テーブルの1行に対応し、`status`カラムがライフサイクルを表します：
+
+- `discovered` — クロール済みページ上でリンクとして発見された状態。リンク解析用に記録されるだけで、クロール対象にはならない
+- `pending` — クロール待ち（シードURL、およびinclude/excludeフィルタを通過した発見リンク）
+- `processing` — ワーカーが取得処理中
+- `completed` — 取得が完了した状態。注意: 404などのHTTPエラーも`completed`になります。結果は`status_code`カラムで確認してください
+- `skipped` — robots.txtによりブロック
+- `error` — 取得に失敗した状態。トランスポートレベルの失敗（DNS、タイムアウト、接続リセット）のほか、`max_response_size`超過や不正なURLも含まれます
+
+### リトライ
+
+キューが空になった後、`last_error_type`が`network_error`のページのみが再キューされ、1回の実行につき1リトライパスが行われます。URLごとの試行回数は`retry_count`で管理され、合計3回までです。決定的な失敗はリトライされません。
+
+### robots.txtのCrawl-delay
+
+robots.txtの`Crawl-delay`は、設定した`request_delay`より遅い場合にのみ適用されます。クロールを遅くする方向にしか働かず（速くなることはありません）、上限は60秒です。
+
+### 中断と再開
+
+Ctrl-C（SIGINT/SIGTERM）で安全に停止できます。処理中の状態は永続化され、データベースは正常にクローズされます。同じ`--database`を指定して再実行すれば再開でき、`processing`のまま残った行は次回起動時に自動的に再キューされます。
 
 ## 出力の分析
 
@@ -134,27 +158,7 @@ sqlite3 -header -csv linktadoru.db "SELECT * FROM links;" > links.csv
 
 ## パフォーマンスチューニング
 
-### 大規模サイト向け
-
-```yaml
-# high-performance.yaml
-concurrency: 50
-request_delay: 100ms
-request_timeout: 10s
-user_agent: "FastCrawler/1.0"
-limit: 0  # 無制限
-```
-
-### 礼儀正しいクロール
-
-```yaml
-# respectful.yaml
-concurrency: 2
-request_delay: 5s
-request_timeout: 30s
-ignore_robots_txt: false
-user_agent: "PoliteBot/1.0"
-```
+サイト規模別の推奨設定と礼儀正しいクロールについては、[設定リファレンス — Performance Tuning](configuration.md#performance-tuning)（英語）を参照してください。
 
 ## トラブルシューティング
 

@@ -21,7 +21,7 @@ Steps to reproduce the behavior:
 A clear and concise description of what you expected to happen.
 
 **Configuration**
-Please provide your configuration file (config.yaml) or relevant parts of it:
+Please provide your configuration file (linktadoru.yml) or relevant parts of it:
 ```yaml
 # Your configuration here
 ```

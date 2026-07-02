@@ -21,9 +21,9 @@ This project follows [Semantic Versioning](https://semver.org/):
 ### 2.1 Regular Release
 
 ```bash
-# 1. After development is complete, merge develop to main
+# 1. Make sure main is green (all PRs merged, CI passing)
 git checkout main
-git merge develop
+git pull
 
 # 2. Create version tag
 git tag v1.0.0
@@ -34,12 +34,10 @@ git push origin v1.0.0
 
 ### 2.2 Pre-release (Beta)
 
-```bash
-# 1. Create beta tag on develop branch
-git checkout develop
-git tag v1.1.0-beta.1
+Pre-release tags trigger the same release workflow:
 
-# 2. Push tag
+```bash
+git tag v1.1.0-beta.1
 git push origin v1.1.0-beta.1
 ```
 
@@ -47,46 +45,24 @@ git push origin v1.1.0-beta.1
 
 ### 3.1 File Naming Convention
 
-```
-linktadoru-[VERSION]-[OS]-[ARCH][SUFFIX]
-```
+Release binaries are named without a version suffix (the version is embedded in the binary and shown by `--version`):
 
-**Examples:**
-- `linktadoru-v1.0.0-linux-amd64`
-- `linktadoru-v1.0.0-darwin-arm64`
-- `linktadoru-v1.0.0-windows-amd64.exe`
+```
+linktadoru-[OS]-[ARCH][.exe]
+```
 
 ### 3.2 Supported Platforms
 
-| OS | Architecture | Example Filename |
-|----|--------------|------------------|
-| Linux | AMD64 | `linktadoru-v1.0.0-linux-amd64` |
-| macOS | ARM64 | `linktadoru-v1.0.0-darwin-arm64` |
-| Windows | AMD64 | `linktadoru-v1.0.0-windows-amd64.exe` |
-
-### 3.3 Checksums
-
-Each binary comes with a `.sha256` file:
-```bash
-# Verification example
-sha256sum -c linktadoru-v1.0.0-linux-amd64.sha256
-```
+| OS | Architecture | Filename |
+|----|--------------|----------|
+| Linux | AMD64 | `linktadoru-linux-amd64` |
+| Linux | ARM64 | `linktadoru-linux-arm64` |
+| macOS | ARM64 | `linktadoru-darwin-arm64` |
+| Windows | AMD64 | `linktadoru-windows-amd64.exe` |
 
 ## 4. CI/CD Trigger Conditions
 
-### 4.1 CI (Test & Build)
-
-**Triggered on:**
-- Push to `main` or `develop` branches
-- Pull requests to `main` branch
-
-**Skipped on:**
-- Documentation-only changes (`*.md`, `docs/**`, `LICENSE`, `.gitignore`)
-
-### 4.2 Release
-
-**Triggered on:**
-- Tag push with `v*` pattern (e.g., `v1.0.0`, `v1.2.3-beta.1`)
+See [.github/workflows/README.md](../.github/workflows/README.md) for the authoritative description of the workflows. In short: CI runs on pull requests to `main` (documentation-only changes are skipped) and on manual dispatch; the release workflow runs on `v*` tag pushes.
 
 ## 5. Version Information Embedding
 
@@ -109,29 +85,26 @@ var (
 ## 6. Branch Strategy
 
 ```
-main (production)
+main (stable, release tags)
  ↑
-develop (development)
- ↑
-feature/* (feature branches)
+feature/* (feature branches, merged via PR)
 ```
 
-### Branch Behavior
-
-| Branch | CI Run | Release | Description |
-|--------|--------|---------|-------------|
-| `main` | ✅ | Tags only | Stable version |
-| `develop` | ✅ | - | Development version |
-| `feature/*` | PR only | - | Feature development |
+| Branch | CI Run | Release |
+|--------|--------|---------|
+| `main` | Manual dispatch only | Tags only |
+| `feature/*` | On PR to `main` | - |
 
 ## 7. Manual Local Build
+
+The Makefile derives `VERSION` from `git describe`; override it on the make command line (an environment variable will not override it):
 
 ```bash
 # Development build
 make build
 
-# Release build (with version)
-VERSION=1.0.0 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) make build
+# Release build (with explicit version)
+make build VERSION=1.0.0 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Cross-compile
 GOOS=darwin GOARCH=arm64 make build
@@ -146,18 +119,12 @@ For critical bug fixes:
 git checkout main
 git checkout -b hotfix/v1.0.1
 
-# 2. Commit fixes
+# 2. Commit fixes and open a PR to main
 git commit -m "Fix critical bug"
 
-# 3. Merge to main
+# 3. After the PR is merged, tag the patch release
 git checkout main
-git merge hotfix/v1.0.1
-
-# 4. Release patch version
+git pull
 git tag v1.0.1
 git push origin v1.0.1
-
-# 5. Merge to develop as well
-git checkout develop
-git merge main
 ```

@@ -30,31 +30,33 @@ exclude_patterns:           # Regex patterns for URLs to exclude
   - "\\.exe$"              # Exclude executable files
 
 # Authentication configuration
-# Note: You can use only one authentication method at a time
+# Note: configure AT MOST ONE method — filling in credentials for more than one
+# fails validation ("multiple authentication types configured simultaneously").
+# Uncomment only the block you use.
 auth:
   type: ""                  # Authentication type: "", "basic", "bearer", or "api-key"
-  
+
   # Basic Authentication
-  basic:
-    username: "user"        # Basic auth username
-    password: "pass"        # Basic auth password
-    # Alternative: use environment variables
-    # username_env: "LT_AUTH_BASIC_USERNAME"
-    # password_env: "LT_AUTH_BASIC_PASSWORD"
-  
+  # basic:
+  #   username: "user"        # Basic auth username
+  #   password: "pass"        # Basic auth password
+  #   # Alternative: use environment variables
+  #   # username_env: "LT_AUTH_BASIC_USERNAME"
+  #   # password_env: "LT_AUTH_BASIC_PASSWORD"
+
   # Bearer Token Authentication
-  bearer:
-    token: "your_token_here"  # Bearer token
-    # Alternative: use environment variable
-    # token_env: "LT_AUTH_BEARER_TOKEN"
-  
+  # bearer:
+  #   token: "your_token_here"  # Bearer token
+  #   # Alternative: use environment variable
+  #   # token_env: "LT_AUTH_BEARER_TOKEN"
+
   # API Key Authentication
-  apikey:
-    header: "X-API-Key"     # Header name for API key
-    value: "your_key_here"  # API key value
-    # Alternative: use environment variables
-    # header_env: "LT_AUTH_API_KEY_HEADER"
-    # value_env: "LT_AUTH_API_KEY_VALUE"
+  # apikey:
+  #   header: "X-API-Key"     # Header name for API key
+  #   value: "your_key_here"  # API key value
+  #   # Alternative: use environment variables
+  #   # header_env: "LT_AUTH_APIKEY_HEADER"
+  #   # value_env: "LT_AUTH_APIKEY_VALUE"
 
 # Custom HTTP headers
 headers:

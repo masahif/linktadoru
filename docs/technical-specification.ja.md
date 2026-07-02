@@ -135,6 +135,15 @@ RETURNING id, url
 - **状態追跡**: 明確な遷移: `discovered` → `pending` → `processing` → `completed`/`skipped`/`error`
 - **再開可能性**: 永続的な状態でプロセス中断を生き延びる
 
+#### リトライ処理
+
+リトライはHTTPクライアントではなく、クロールループとストレージレイヤーが担います：
+
+- キューが空になった後、`last_error_type = 'network_error'`（一時的なトランスポート障害）で失敗したページのみが再キューされ、1回の実行につき1リトライパスが行われる
+- 試行回数は`retry_count`カラムで追跡され、実行をまたいでURLごとに合計3回まで
+- 試行間のバックオフはなく、通常のドメイン別レート制限が適用される
+- 決定的な失敗（不正なURLなど）は意図的にリトライしない
+
 ### 3. HTTPクライアント
 
 **パッケージ**: `internal/crawler/http_client.go`
@@ -142,10 +151,11 @@ RETURNING id, url
 機能：
 - カスタムUser-Agentサポート
 - 設定可能なタイムアウト
-- 指数バックオフによる自動リトライ
 - コネクションプーリング
 - レスポンスサイズ制限
 - パフォーマンスメトリクスの収集（TTFB、ダウンロード時間）
+
+HTTPクライアント自体はリクエストごとに1回だけフェッチを行います。リトライはクロールレベルで処理されます（上記「リトライ処理」参照）。
 
 ### 4. HTMLパーサー
 
@@ -174,123 +184,14 @@ SQLiteベースのストレージ：
 
 #### データベーススキーマ
 
-**統合Pagesテーブル（キュー＋結果）:**
+正式なスキーマ定義は [`internal/storage/schema.go`](../internal/storage/schema.go) にあり、初回実行時に自動的に作成されます。SQLをここに複製する代わりに、その背後にある設計判断を示します：
 
-```sql
--- Pagesテーブルはキューと結果ストレージを兼用
-CREATE TABLE pages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT UNIQUE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'skipped', 'error', 'discovered')),
-    
-    -- キュー関連フィールド
-    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    processing_started_at DATETIME,
-    
-    -- クロール結果フィールド（クロール完了まではNULL）
-    status_code INTEGER,
-    title TEXT,
-    meta_description TEXT,
-    meta_robots TEXT,
-    canonical_url TEXT,
-    content_hash TEXT,
-    ttfb_ms INTEGER,
-    download_time_ms INTEGER,
-    response_size_bytes INTEGER,
-    content_type TEXT,
-    content_length INTEGER,
-    last_modified DATETIME,
-    server TEXT,
-    content_encoding TEXT,
-    crawled_at DATETIME,
-    
-    -- エラー追跡
-    retry_count INTEGER DEFAULT 0,
-    last_error_type TEXT,
-    last_error_message TEXT
-);
-```
-
-**サポートテーブル:**
-
-```sql
--- リンク関係テーブル（ページIDによる正規化）
--- 注意: UNIQUE制約により重複関係を防止。同じリンクが異なるanchor_textで
--- 複数回見つかった場合、最初の出現のみが保存されます。
-CREATE TABLE link_relations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_page_id INTEGER NOT NULL,
-    target_page_id INTEGER NOT NULL,
-    anchor_text TEXT,
-    link_type TEXT,
-    rel_attribute TEXT,
-    crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (source_page_id) REFERENCES pages(id),
-    FOREIGN KEY (target_page_id) REFERENCES pages(id),
-    UNIQUE(source_page_id, target_page_id)
-);
-
--- ユーザー向けリンクビュー（URLベースのインターフェース維持）
-CREATE VIEW links AS
-SELECT 
-    lr.id,
-    p1.url AS source_url,
-    p2.url AS target_url,
-    lr.anchor_text,
-    lr.link_type,
-    lr.rel_attribute,
-    lr.crawled_at
-FROM link_relations lr
-JOIN pages p1 ON lr.source_page_id = p1.id
-JOIN pages p2 ON lr.target_page_id = p2.id;
-
--- 詳細エラー追跡用の別テーブル
-CREATE TABLE crawl_errors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT NOT NULL,
-    error_type TEXT NOT NULL,
-    error_message TEXT,
-    occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- メタデータテーブル
-CREATE TABLE crawl_meta (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
-);
-```
-
-**最適化インデックス:**
-
-```sql
--- キュー操作用の重要インデックス
-CREATE INDEX idx_pages_status ON pages(status);
-CREATE INDEX idx_pages_status_added ON pages(status, added_at);
-CREATE INDEX idx_pages_url ON pages(url);
-
--- 完了したデータのみの条件付きインデックス
-CREATE INDEX idx_pages_content_hash ON pages(content_hash) WHERE content_hash IS NOT NULL;
-CREATE INDEX idx_pages_status_code ON pages(status_code) WHERE status = 'completed';
-```
-
-**分析ビュー:**
-
-```sql
--- 完了ページのみのビュー（分析・レポート用）
-CREATE VIEW completed_pages AS
-SELECT id, url, status_code, title, meta_description, meta_robots,
-       canonical_url, content_hash, ttfb_ms, download_time_ms,
-       response_size_bytes, content_type, content_length,
-       last_modified, server, content_encoding, crawled_at
-FROM pages WHERE status = 'completed';
-
--- キュー管理ビュー
-CREATE VIEW queue_status AS
-SELECT status, COUNT(*) as count,
-       MIN(added_at) as oldest_item,
-       MAX(added_at) as newest_item
-FROM pages GROUP BY status;
-```
+- **統合`pages`テーブル**: URLごとに1行がキューエントリとクロール結果を兼ねる。`status`カラムが上述のライフサイクルを駆動し、クロール結果カラムは取得完了まで`NULL`のまま。
+- **HTTPヘッダーのJSON格納と生成カラム**: レスポンスヘッダー全体を`response_http_headers`（JSON）に一度だけ保存。頻繁に照会されるヘッダー — `content_type`、`content_length`、`last_modified`、`server`、`content_encoding`、`x_cache` — は`GENERATED ALWAYS ... STORED`カラムとして公開され、書き込みロジックを複製せずに通常のカラム同様にインデックス・照会できる。
+- **正規化されたリンクグラフ**: `link_relations`はエッジをページIDのペアとして保存し、`UNIQUE(source_page_id, target_page_id)`制約を持つ（同じリンクが異なるアンカーテキストで複数回見つかった場合、最初のもののみ保持）。`links`ビューがエッジをURLペアとして再公開し、分析を容易にする。
+- **分析ビュー**: `completed_pages`（取得済みページのみ）と`queue_status`（ステータス別件数と最古/最新タイムスタンプ）が統合テーブルへの安定した照会インターフェースを提供。
+- **サポートテーブル**: `crawl_errors`は診断用にすべてのエラー発生を記録し、`crawl_meta`はキー・バリュー形式のクロールメタデータを保存。
+- **インデックス戦略**: キュー操作は`status`および`(status, added_at)`のインデックスで支え、分析用カラムには部分インデックス（例: `WHERE content_hash IS NOT NULL`）を用いてキューへの書き込みを軽量に保つ。
 
 ### 6. レートリミッター
 
@@ -301,3 +202,5 @@ FROM pages GROUP BY status;
 - トークンバケットアルゴリズム
 - 設定可能な遅延
 - ノンブロッキング設計
+
+robots.txtの`Crawl-delay`ディレクティブは、設定されたリクエスト遅延より遅い場合に適用され、上限は60秒です。

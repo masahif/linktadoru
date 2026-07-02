@@ -36,30 +36,28 @@ git add .
 git commit -m "Initial commit"
 ```
 
-### Project Configuration (.actrc)
+### Basic Usage
 
-The `.actrc` file is configured in the project root:
+The Makefile provides shortcuts:
 
 ```bash
-# Use Ubuntu 22.04 image (better compatibility)
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
+# Run the CI workflow locally
+make act
 
-# Environment variables
---env GO_VERSION=1.23
+# List available workflows/jobs
+make act-list
 
-# Don't use gitignore
---use-gitignore=false
-
-# Verbose output
---verbose
+# Run only the test job
+make act-test
 ```
 
-### Basic Usage
+Or invoke act directly:
+
 ```bash
 # List workflows
 act --list
 
-# Recommended: Run CI workflow (.actrc applied automatically)
+# Run CI workflow
 act -W .github/workflows/ci.yml
 
 # Run specific job only
@@ -70,6 +68,16 @@ act -W .github/workflows/ci.yml --dryrun
 
 # Simulate PR event
 act pull_request -W .github/workflows/ci.yml
+```
+
+Useful flags (can be persisted in a local `.actrc` file if you create one):
+
+```bash
+# Use Ubuntu 22.04 image (better compatibility)
+act -P ubuntu-latest=catthehacker/ubuntu:act-22.04
+
+# Set environment variables
+act --env GO_VERSION=1.23
 ```
 
 ### Environment Variables
@@ -98,7 +106,7 @@ act --secret-file .secrets
 
 ## 4. Manual CI Execution (workflow_dispatch)
 
-CI strategy has changed - CI no longer runs on direct pushes to main branch. Manual execution is available when needed.
+CI does not run on direct pushes to the main branch (see [.github/workflows/README.md](../.github/workflows/README.md)). Manual execution is available when needed.
 
 ### Using GitHub CLI
 ```bash
@@ -119,8 +127,6 @@ gh run list --workflow=CI --limit 5
 4. Select branch and click **Run workflow**
 
 ## 5. Recommended Workflow
-
-Current CI strategy (inspired by act project):
 
 1. **Local Testing**: Use act for basic functionality checks
 2. **Pull Requests**: Automatic CI execution on PRs to main branch
