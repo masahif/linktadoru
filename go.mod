@@ -1,14 +1,12 @@
 module github.com/masahif/linktadoru
 
-go 1.23.0
-
-toolchain go1.23.11
+go 1.25.0
 
 require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/net v0.33.0
-	golang.org/x/time v0.12.0
+	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
