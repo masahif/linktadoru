@@ -16,7 +16,7 @@ func TestNewRotatingFileWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotatingFileWriter failed: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	if writer.filePath != logFile {
 		t.Errorf("FilePath = %q, want %q", writer.filePath, logFile)
@@ -37,7 +37,7 @@ func TestRotatingFileWriter_Write(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotatingFileWriter failed: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// Write some data
 	data := []byte("This is a test log message\n")
@@ -73,7 +73,7 @@ func TestRotatingFileWriter_Rotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotatingFileWriter failed: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// Write data that exceeds max size
 	firstMsg := strings.Repeat("A", 30) + "\n"
@@ -135,7 +135,7 @@ func TestRotatingFileWriter_MaxBackups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotatingFileWriter failed: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// Write multiple messages to trigger multiple rotations
 	for i := 0; i < 5; i++ {
@@ -172,7 +172,7 @@ func TestRotatingFileWriter_BackupName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotatingFileWriter failed: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	backupName := writer.backupName(1)
 
