@@ -504,7 +504,7 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to get retryable pages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var items []crawler.URLItem
 	for rows.Next() {

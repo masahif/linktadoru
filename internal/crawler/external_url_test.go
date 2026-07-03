@@ -63,9 +63,10 @@ func TestPageProcessorExternalLinks(t *testing.T) {
 		// Analyze results
 		var internalLinks, externalLinks []*LinkData
 		for _, link := range result.Links {
-			if link.LinkType == "internal" {
+			switch link.LinkType {
+			case "internal":
 				internalLinks = append(internalLinks, link)
-			} else if link.LinkType == "external" {
+			case "external":
 				externalLinks = append(externalLinks, link)
 			}
 		}
@@ -109,9 +110,10 @@ func TestPageProcessorExternalLinks(t *testing.T) {
 		// Analyze results
 		var internalLinks, externalLinks []*LinkData
 		for _, link := range result.Links {
-			if link.LinkType == "internal" {
+			switch link.LinkType {
+			case "internal":
 				internalLinks = append(internalLinks, link)
-			} else if link.LinkType == "external" {
+			case "external":
 				externalLinks = append(externalLinks, link)
 			}
 		}
