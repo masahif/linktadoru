@@ -6,7 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-03
+
 ### Changed
+- Toolchain: Go 1.25 and golangci-lint v2 in CI (new lint findings fixed:
+  unchecked `Close()` return values, tagged-switch cleanups).
+- Dependencies: golang.org/x/net 0.33.0 → 0.56.0 (includes upstream security
+  fixes), golang.org/x/time 0.12.0 → 0.15.0, cobra 1.9.1 → 1.10.2,
+  viper 1.20.1 → 1.21.0; GitHub Actions: checkout v7, codecov-action v7,
+  download-artifact v8, golangci-lint-action v9.
 - Documentation overhaul (no code changes):
   - Deduplicated content into single sources of truth: the options table in
     `docs/configuration.md` (config/auth/headers), `.github/workflows/README.md`
