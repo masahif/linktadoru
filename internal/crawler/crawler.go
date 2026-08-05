@@ -148,6 +148,13 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 		},
 	}
 
+	// Redirects must clear the same host filter as newly discovered URLs.
+	// Checking only the initial URL lets a 302 walk the crawler onto a host it
+	// was never allowed to reach.
+	httpClient.SetRedirectPolicy(func(u *url.URL) bool {
+		return crawler.isAllowedHost(u.String())
+	})
+
 	return crawler, nil
 }
 

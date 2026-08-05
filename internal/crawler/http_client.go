@@ -8,8 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"time"
 )
+
+// maxRedirects bounds how many redirect hops a single request may follow.
+const maxRedirects = 10
 
 // DefaultMaxResponseSize bounds how many bytes of a response body are read
 // when no explicit limit is configured. Without a bound, a single huge (or
@@ -20,6 +24,11 @@ const DefaultMaxResponseSize = 10 * 1024 * 1024 // 10 MiB
 // size limit. Callers can detect it with errors.Is to classify the failure as
 // deterministic (not worth retrying).
 var ErrResponseTooLarge = errors.New("response body exceeds size limit")
+
+// ErrRedirectNotAllowed is returned when a redirect points at a target the
+// configured redirect policy rejects. Without this check a 302 could steer the
+// crawler at a host it was never allowed to reach (SSRF).
+var ErrRedirectNotAllowed = errors.New("redirect target not allowed")
 
 // HTTPClient handles HTTP requests with performance metrics
 type HTTPClient struct {
@@ -33,6 +42,10 @@ type HTTPClient struct {
 	apiKeyHeader    string            // API key header name
 	apiKeyValue     string            // API key header value
 	customHeaders   map[string]string // Custom headers
+
+	// redirectPolicy decides whether a redirect target may be followed.
+	// Nil allows every target, bounded only by the hop limit.
+	redirectPolicy func(*url.URL) bool
 }
 
 // HTTPMetrics contains performance metrics for an HTTP request
@@ -67,22 +80,69 @@ func NewHTTPClient(userAgent string, timeout time.Duration) *HTTPClient {
 		DisableCompression:  false, // Enable automatic decompression
 	}
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("too many redirects")
-			}
-			return nil
-		},
-	}
-
-	return &HTTPClient{
-		client:          client,
+	h := &HTTPClient{
 		userAgent:       userAgent,
 		maxResponseSize: DefaultMaxResponseSize,
 		customHeaders:   make(map[string]string),
+	}
+
+	h.client = &http.Client{
+		Transport:     transport,
+		Timeout:       timeout,
+		CheckRedirect: h.checkRedirect,
+	}
+
+	return h
+}
+
+// SetRedirectPolicy installs a predicate consulted before each redirect hop.
+// Returning false aborts the request with ErrRedirectNotAllowed without
+// contacting the target. Passing nil clears the policy.
+func (h *HTTPClient) SetRedirectPolicy(allow func(*url.URL) bool) {
+	h.redirectPolicy = allow
+}
+
+// checkRedirect gates redirect hops. It runs before the next request is sent,
+// so a rejected target is never contacted. On top of the hop limit it enforces
+// the redirect policy and drops credentials once the origin changes, so a
+// redirect cannot leak auth headers to a host they were never meant for.
+func (h *HTTPClient) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("too many redirects")
+	}
+
+	if h.redirectPolicy != nil && !h.redirectPolicy(req.URL) {
+		return fmt.Errorf("%w: %s", ErrRedirectNotAllowed, req.URL.String())
+	}
+
+	// Compare against the originating request: credentials belong to the
+	// origin they were configured for and must not follow the crawler off it.
+	// Go's built-in redirect policy does not cover the configured API-key
+	// header or arbitrary custom headers, so every crawler credential is
+	// removed here at an explicit origin boundary.
+	if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
+		h.stripCredentialHeaders(req.Header)
+	}
+
+	return nil
+}
+
+// sameOrigin reports whether two URLs share a scheme and host (including port).
+func sameOrigin(a, b *url.URL) bool {
+	return a.Scheme == b.Scheme && a.Host == b.Host
+}
+
+// stripCredentialHeaders removes every header that carries a secret.
+func (h *HTTPClient) stripCredentialHeaders(header http.Header) {
+	header.Del("Authorization")
+	header.Del("Proxy-Authorization")
+	header.Del("Cookie")
+
+	if h.apiKeyHeader != "" {
+		header.Del(h.apiKeyHeader)
+	}
+	for name := range h.customHeaders {
+		header.Del(name)
 	}
 }
 
