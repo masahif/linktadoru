@@ -51,7 +51,29 @@ error rather than crawling a partial list. A file that names no URLs at all is
 treated like a run with no seeds: the crawler resumes from the queue in the
 existing database, or reports that there is nothing to crawl.
 
-### 4. Using Configuration File
+### 4. Bounding the Crawl Depth
+
+`--max-depth` stops the crawl a fixed number of hops from the seeds. Seeds are
+depth 0, so this crawls each listed site's landing page and everything one click
+from it:
+
+```bash
+./linktadoru --seed-file urls.txt --max-depth 1
+```
+
+Unlike `--limit`, which is a single budget shared by every seed, the depth bound
+applies to every seed alike: on its own, each seed gets the same hop allowance
+however long the list is. Combining it with `--limit` reintroduces the shared
+budget — the run stops once the page count is spent, so the later seeds can still
+end up incompletely crawled. Links beyond the bound are still recorded for link
+analysis, they are just not fetched.
+
+`--max-depth` cannot be used on a database that still has unfinished pages from
+an unbounded run — queued URLs, or failures that still have retries left: use a
+new database file, or finish that work without `--max-depth` first. See
+[Configuration Reference — Crawl Depth](configuration.md#crawl-depth).
+
+### 5. Using Configuration File
 
 Create a configuration file:
 

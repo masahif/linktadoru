@@ -82,6 +82,12 @@ func (s *SQLiteStorage) InitSchema() error {
 		return fmt.Errorf("failed to migrate pages table: %w", err)
 	}
 
+	// Order matters: the rebuild above copies a fixed column list that predates
+	// 'depth', so the column has to be added after it, not before.
+	if err := s.migratePagesAddDepth(); err != nil {
+		return fmt.Errorf("failed to migrate pages table: %w", err)
+	}
+
 	// Create schema (idempotent). After a migration this also recreates the
 	// indexes and views that the table rebuild dropped.
 	if _, err := s.db.Exec(schemaSQL); err != nil {

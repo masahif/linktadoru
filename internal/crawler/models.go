@@ -6,6 +6,10 @@ import "time"
 type URLItem struct {
 	ID  int    // Queue item ID for tracking
 	URL string // URL to be processed
+	// Depth is the number of hops from the nearest seed URL, set only by a
+	// bounded crawl (--max-depth). An unbounded crawl leaves it zero and never
+	// reads it.
+	Depth int
 }
 
 // PageData represents crawled page information

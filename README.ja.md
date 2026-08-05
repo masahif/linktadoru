@@ -51,6 +51,9 @@ make build
 # ファイルからシードURLを読み込む（1行1URL、'-' は標準入力）
 ./linktadoru --seed-file urls.txt
 
+# 各シードとその1ホップ先までをクロール
+./linktadoru --seed-file urls.txt --max-depth 1
+
 # 現在の設定を表示
 ./linktadoru --show-config
 

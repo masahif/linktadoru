@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -569,6 +570,38 @@ func TestLoadHeadersFromEnv(t *testing.T) {
 				if !expectedMap[actual] {
 					t.Errorf("Unexpected header '%s' found in actual headers", actual)
 				}
+			}
+		})
+	}
+}
+
+// max_depth 0 means unlimited, so a negative value is a typo rather than an
+// intent and must be refused instead of silently behaving like 0.
+func TestValidateMaxDepth(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxDepth int
+		wantErr  bool
+	}{
+		{name: "unlimited", maxDepth: 0},
+		{name: "bounded", maxDepth: 3},
+		{name: "negative", maxDepth: -1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.MaxDepth = tt.maxDepth
+
+			err := cfg.Validate()
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidMaxDepth) {
+					t.Errorf("Validate() = %v, want ErrInvalidMaxDepth", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Validate() returned %v, want no error", err)
 			}
 		})
 	}

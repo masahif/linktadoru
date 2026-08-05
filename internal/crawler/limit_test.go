@@ -8,7 +8,7 @@ import (
 )
 
 // MockStorage implements Storage interface for testing
-type MockStorage struct{}
+type MockStorage struct{ unboundedOnlyStorage }
 
 func (m *MockStorage) SaveLink(link *LinkData) error {
 	return nil
