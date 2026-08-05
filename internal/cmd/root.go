@@ -67,6 +67,11 @@ func init() {
 	// Configuration management flags
 	rootCmd.Flags().Bool("show-config", false, "Display current configuration in YAML format and exit")
 
+	// Seed input flag. Deliberately not bound to viper: it is a per-run input,
+	// and binding it would make it just another config key competing with
+	// seed_urls instead of overriding it.
+	rootCmd.Flags().String("seed-file", "", "Read seed URLs from a file, one per line ('-' reads stdin; blank lines and '#' comments are ignored)")
+
 	// Basic crawling flags (updated defaults)
 	rootCmd.Flags().IntP("concurrency", "c", 2, "Number of concurrent workers")
 	rootCmd.Flags().Float64P("delay", "r", 0.1, "Delay between requests in seconds")
@@ -197,6 +202,44 @@ func showCurrentConfig(cfg *config.CrawlConfig) error {
 	return nil
 }
 
+// applySeedURLs resolves the seed URLs the user named on the command line and
+// writes them onto cfg, leaving the config file's seed_urls in place when the
+// command line named none.
+//
+// --seed-file and positional arguments are mutually exclusive: merging them
+// would leave the order and the deduplication rule up to guesswork, and a run
+// that crawls a different set than intended is not obviously wrong at a glance.
+func applySeedURLs(cmd *cobra.Command, args []string, cfg *config.CrawlConfig) error {
+	seedFile, _ := cmd.Flags().GetString("seed-file")
+
+	// Whether the flag was given, not whether its value is non-empty: an empty
+	// expansion (--seed-file="$LIST" with LIST unset) would otherwise be read
+	// as "no seed file given" and fall back to seed_urls, quietly crawling a
+	// different set of hosts than the caller asked for.
+	seedFileGiven := cmd.Flags().Changed("seed-file")
+
+	if seedFileGiven && seedFile == "" {
+		return fmt.Errorf("--seed-file needs a path ('-' reads standard input); it was given an empty value")
+	}
+
+	if seedFileGiven && len(args) > 0 {
+		return fmt.Errorf("--seed-file and URL arguments cannot be combined: pass the seed URLs either on the command line or in the file, not both")
+	}
+
+	switch {
+	case seedFileGiven:
+		urls, err := readSeedURLs(seedFile, cmd.InOrStdin())
+		if err != nil {
+			return err
+		}
+		cfg.SeedURLs = urls
+	case len(args) > 0:
+		cfg.SeedURLs = args
+	}
+
+	return nil
+}
+
 func runCrawler(cmd *cobra.Command, args []string) error {
 	// Load configuration
 	// Handle --show-config flag first
@@ -204,12 +247,17 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 
 	cfg := config.DefaultConfig()
 
-	// Set seed URLs from command line arguments
-	cfg.SeedURLs = args
-
 	// Override with viper values
 	if err := viper.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Seed URLs named on the command line take precedence over seed_urls in the
+	// config file. This has to run after Unmarshal: assigning them before it
+	// (as this did) let a config file that carries seed_urls silently replace
+	// the URLs the user typed, contradicting the documented priority order.
+	if err := applySeedURLs(cmd, args, cfg); err != nil {
+		return err
 	}
 
 	// Load headers from environment variables (Issue #8 specification)
@@ -285,8 +333,10 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Starting crawler with configuration:\n")
+	// Only the count: a seed list can be long, and a seed URL can carry
+	// credentials (https://user:pass@host/) or an otherwise private path.
 	if len(cfg.SeedURLs) > 0 {
-		fmt.Printf("  Seed URLs: %v\n", cfg.SeedURLs)
+		fmt.Printf("  Seed URLs: %d\n", len(cfg.SeedURLs))
 	} else {
 		fmt.Printf("  Seed URLs: (none - resuming from existing queue)\n")
 	}

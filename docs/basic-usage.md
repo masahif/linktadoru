@@ -20,7 +20,38 @@ Crawl up to 10 pages with 2 concurrent workers and a 2-second delay (`--delay` t
 ./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
-### 3. Using Configuration File
+### 3. Seed URLs from a File or Standard Input
+
+Use `--seed-file` when the URL list is generated per run, is too long for the
+command line, or is maintained outside the repository:
+
+```bash
+./linktadoru --seed-file urls.txt
+
+# '-' reads standard input, so the list can come from a pipe
+fetch-target-list | ./linktadoru --config prod.yml --seed-file -
+```
+
+The file holds one URL per line. Surrounding whitespace is trimmed, blank lines
+and lines starting with `#` are ignored, and CRLF line endings and a leading
+UTF-8 byte order mark are handled:
+
+```text
+# nightly targets
+https://example.com
+https://docs.example.com/guide
+```
+
+`--seed-file` and URL arguments cannot be combined — pass the seeds one way or
+the other. Both take precedence over `seed_urls` in the configuration file, so a
+stable config file can be reused while only the list changes.
+
+A missing or unreadable file, or a line longer than 64 KiB, stops the run with an
+error rather than crawling a partial list. A file that names no URLs at all is
+treated like a run with no seeds: the crawler resumes from the queue in the
+existing database, or reports that there is nothing to crawl.
+
+### 4. Using Configuration File
 
 Create a configuration file:
 

@@ -48,6 +48,9 @@ Requirements: Go 1.23+
 # Using config file
 ./linktadoru --config linktadoru.yml https://httpbin.org
 
+# Seed URLs from a file (one per line; '-' reads stdin)
+./linktadoru --seed-file urls.txt
+
 # View current configuration
 ./linktadoru --show-config
 

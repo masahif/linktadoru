@@ -7,6 +7,21 @@ LinkTadoru can be configured through multiple methods with the following priorit
 3. Configuration file (`linktadoru.yml`)
 4. Default values (lowest priority)
 
+### Seed URLs
+
+Seed URLs are named on the command line in one of two mutually exclusive ways:
+
+- `--seed-file PATH` — read the list from a file (`-` reads standard input)
+- URL arguments — list the URLs on the command line
+
+The two cannot be combined; passing both is an error, because merging them would
+leave the resulting crawl scope to guesswork. Neither ranks above the other:
+whichever one is used takes precedence over `seed_urls` in the configuration
+file, replacing it entirely rather than adding to it. When the command line
+names no seeds, `seed_urls` is used. See
+[Basic Usage](basic-usage.md#3-seed-urls-from-a-file-or-standard-input) for the
+seed file format.
+
 ## Configuration Options
 
 This table is the authoritative reference for all options. Run `./linktadoru --help` for the current flag list and `./linktadoru --show-config` to inspect the effective configuration.
@@ -23,6 +38,8 @@ This table is the authoritative reference for all options. Run `./linktadoru --h
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
 | max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes (10 MiB) |
 | database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
+| seed_urls | - (see `--seed-file`) | - | [] | Starting URLs (config file only; overridden by URL arguments or `--seed-file`) |
+| - | `--seed-file` | - | "" | Read seed URLs from a file, one per line; `-` reads stdin (CLI only, not a config key) |
 | **URL Filtering** |
 | include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
 | exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |
@@ -81,7 +98,7 @@ log_level: "info"
 
 ## Environment Variables
 
-Options that are bound to a CLI flag can be set via environment variables with the `LT_` prefix (see the table above). Options without a flag — the `log_*` keys, `allowed_schemes`, and `seed_urls` — cannot be set via environment variables; use the configuration file instead.
+Options that are bound to a CLI flag can be set via environment variables with the `LT_` prefix (see the table above). Options without a flag — the `log_*` keys, `allowed_schemes`, and `seed_urls` — cannot be set via environment variables; use the configuration file instead (or `--seed-file` for seed URLs).
 
 ```bash
 # Basic configuration
