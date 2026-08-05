@@ -80,6 +80,7 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
+	rootCmd.Flags().Int("max-depth", 0, "Stop after N hops from the seed URLs (0=unlimited; seeds are depth 0)")
 	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
@@ -118,6 +119,7 @@ func init() {
 		{"ignore_robots_txt", "ignore-robots-txt"},
 		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
+		{"max_depth", "max-depth"},
 		{"max_response_size", "max-response-size"},
 		{"include_patterns", "include-patterns"},
 		{"exclude_patterns", "exclude-patterns"},
@@ -305,8 +307,11 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to open database %s: %w", cfg.DatabasePath, err)
 		}
 
-		// Check if queue has any items (queued or processing)
-		hasWork, err := tempStorage.HasQueuedItems()
+		// Anything the crawler would still act on counts as work to resume:
+		// queued and in-flight pages, and failures with retries left. Asking
+		// only about the queue used to end the run while retries were still
+		// owed — the crawler would have run them, but never got the chance.
+		hasWork, err := tempStorage.HasResumableWork(crawler.MaxRetries)
 		if err != nil {
 			if closeErr := tempStorage.Close(); closeErr != nil {
 				return fmt.Errorf("failed to check queue status: %w (close error: %v)", err, closeErr)
@@ -318,7 +323,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		}
 
 		if !hasWork {
-			fmt.Printf("No URLs provided and no queued items found in database %s\n", cfg.DatabasePath)
+			fmt.Printf("No URLs provided and no unfinished pages found in database %s\n", cfg.DatabasePath)
 			fmt.Printf("Nothing to crawl. Exiting.\n")
 			return nil
 		}
@@ -341,6 +346,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Seed URLs: (none - resuming from existing queue)\n")
 	}
 	fmt.Printf("  Limit: %d\n", cfg.Limit)
+	fmt.Printf("  Max Depth: %d\n", cfg.MaxDepth)
 	fmt.Printf("  Concurrency: %d\n", cfg.Concurrency)
 	fmt.Printf("  Request Delay: %v\n", cfg.RequestDelay)
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)

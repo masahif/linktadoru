@@ -43,6 +43,17 @@ type Storage interface {
 	GetRetryablePages(maxRetries int) ([]URLItem, error)
 	RequeueErrorPages(maxRetries int) (int, error)
 
+	// Depth-bounded queue management, used only when --max-depth is set. These
+	// sit alongside the methods above rather than replacing them: an unbounded
+	// crawl keeps its original, depth-unaware path.
+	AddToQueueWithDepth(urls []string, depth int) error
+	GetNextFromQueueAtDepth(depth int) (*URLItem, error)
+	MinUnfinishedDepth(maxRetries int) (*int, error)
+	HasQueuedItemsAtDepth(depth int) (bool, error)
+	HasRetryablePagesAtDepth(maxRetries, depth int) (bool, error)
+	RequeueErrorPagesAtDepth(maxRetries, depth int) (int, error)
+	HasDepthlessWork(maxRetries int) (bool, error)
+
 	// Meta-data management
 	GetMeta(key string) (string, error)
 	SetMeta(key, value string) error

@@ -35,6 +35,10 @@ type DefaultCrawler struct {
 	// State
 	stats      CrawlStats
 	statsMutex sync.RWMutex
+	// layerDepth is the depth the current round of workers is allowed to claim
+	// from, used only by a bounded crawl. It is written between rounds, while
+	// no worker is running, and read by the workers of the round it starts.
+	layerDepth int
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup // tracks workers only (not the stats reporter)
@@ -223,6 +227,14 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
 
+	// Checked before anything is queued or fetched, so a database that cannot
+	// honour the bound is rejected rather than half-crawled.
+	if c.bounded() {
+		if err := c.requireDepthTracking(); err != nil {
+			return err
+		}
+	}
+
 	// Reset rows left in 'processing' by a previous interrupted run back to
 	// 'pending'. No workers are running yet, so every 'processing' row is stale.
 	// This both re-queues interrupted URLs and prevents a stale 'processing' row
@@ -230,34 +242,35 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	// shouldExitOnEmptyQueue from ever firing and hang every worker (issue #46
 	// review follow-up). Passing 0 treats all current 'processing' rows as stale.
 	if err := c.storage.CleanupStaleProcessing(0); err != nil {
+		if c.bounded() {
+			// Fail closed. Those stale rows belong to a depth, and the layer
+			// barrier decides what to open next from the state of the queue —
+			// if that state could not be established, a shallow layer may look
+			// finished when it is not, and the run would step past it.
+			return fmt.Errorf("failed to reset stale processing rows: %w", err)
+		}
 		slog.Error("Failed to reset stale processing rows", "error", err)
 	}
 
 	if len(seedURLs) > 0 {
 		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
-		// Step 1: Add seed URLs to queue first (before starting workers)
-		var urls []string
-		for i, seedURL := range seedURLs {
-			if c.config.Limit > 0 && i >= c.config.Limit {
-				break
-			}
-			urls = append(urls, seedURL)
+		// Every seed is queued. Limit caps how many pages are crawled, not how
+		// many starting points the run is allowed to know about; truncating the
+		// seed list here silently narrowed the crawl instead, which a long list
+		// from --seed-file makes invisible.
+		var err error
+		if c.bounded() {
+			err = c.storage.AddToQueueWithDepth(seedURLs, 0)
+		} else {
+			err = c.storage.AddToQueue(seedURLs)
 		}
-
-		err := c.storage.AddToQueue(urls)
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
 		}
-		slog.Info("Added seed URLs to queue", "count", len(urls))
+		slog.Info("Added seed URLs to queue", "count", len(seedURLs))
 	} else {
 		slog.Info("Starting crawler - resuming from existing queue")
-	}
-
-	// Step 2: Start workers after queue is populated
-	for i := 0; i < c.config.Concurrency; i++ {
-		c.wg.Add(1)
-		go c.worker(i)
 	}
 
 	// The stats reporter lives outside the worker WaitGroup: it only exits on
@@ -272,18 +285,23 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 		c.statsReporter()
 	}()
 
-	// Always wait for the workers themselves. On external cancellation they
-	// exit promptly (in-flight requests carry c.ctx), and waiting here is what
-	// makes shutdown graceful: Start does not return while a worker may still
-	// be writing to the database.
-	c.wg.Wait()
-
-	if c.ctx.Err() != nil {
-		slog.Info("Crawling cancelled")
+	var runErr error
+	if c.bounded() {
+		runErr = c.runBoundedCrawl()
 	} else {
-		slog.Info("Crawling completed - checking for retries")
-		if err := c.performRetries(); err != nil {
-			slog.Error("Error during retry processing", "error", err)
+		// Always wait for the workers themselves. On external cancellation they
+		// exit promptly (in-flight requests carry c.ctx), and waiting here is what
+		// makes shutdown graceful: Start does not return while a worker may still
+		// be writing to the database.
+		c.runWorkers()
+
+		if c.ctx.Err() != nil {
+			slog.Info("Crawling cancelled")
+		} else {
+			slog.Info("Crawling completed - checking for retries")
+			if err := c.performRetries(); err != nil {
+				slog.Error("Error during retry processing", "error", err)
+			}
 		}
 	}
 
@@ -291,12 +309,12 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.cancel()
 	<-statsDone
 
-	return nil
+	return runErr
 }
 
 // performRetries handles retry logic for error status pages
 func (c *DefaultCrawler) performRetries() error {
-	const maxRetries = 3
+	const maxRetries = MaxRetries
 
 	retryablePages, err := c.storage.GetRetryablePages(maxRetries)
 	if err != nil {
@@ -383,7 +401,7 @@ func (c *DefaultCrawler) worker(id int) {
 				return
 			}
 
-			item, err := c.storage.GetNextFromQueue()
+			item, err := c.nextQueueItem()
 			if err != nil {
 				slog.Error("Worker failed to get from queue", "worker_id", id, "error", err)
 				c.workerSleep()
@@ -426,12 +444,33 @@ func (c *DefaultCrawler) shouldStopWorker(id int) bool {
 // 'discovered' rows must terminate instead of spinning forever — and a run whose
 // seeds all errored (PagesCrawled == 0) must end rather than hang.
 func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
-	hasItems, err := c.storage.HasQueuedItems()
+	var (
+		hasItems bool
+		err      error
+	)
+	if c.bounded() {
+		// Scoped to the current layer: work waiting at a deeper layer is not
+		// this round's to do, and treating it as "still busy" would keep the
+		// workers alive past the barrier.
+		hasItems, err = c.storage.HasQueuedItemsAtDepth(c.layerDepth)
+	} else {
+		hasItems, err = c.storage.HasQueuedItems()
+	}
 	if err != nil {
 		slog.Error("Worker failed to check queued items", "error", err)
 		return false
 	}
 	return !hasItems
+}
+
+// nextQueueItem claims the next URL a worker should process: the next pending
+// row at the current depth for a bounded crawl, or the next pending row at all
+// for an unbounded one.
+func (c *DefaultCrawler) nextQueueItem() (*URLItem, error) {
+	if c.bounded() {
+		return c.storage.GetNextFromQueueAtDepth(c.layerDepth)
+	}
+	return c.storage.GetNextFromQueue()
 }
 
 // workerSleep applies the configured delay between requests
@@ -550,7 +589,7 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 	if err := c.storage.SaveLinks(result.Links); err != nil {
 		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
 	}
-	c.processNewURLs(id, result.Links, item.URL)
+	c.processNewURLs(id, result.Links, item)
 
 	// Move this page out of 'processing' to a terminal state.
 	if result.Page != nil {
@@ -590,8 +629,18 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 	c.workerSleep()
 }
 
-// processNewURLs collects and queues new URLs from links
-func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
+// processNewURLs collects and queues new URLs from links.
+//
+// In a bounded crawl the children of the page just crawled sit one hop further
+// out. Children past the bound are not queued, but SaveLinks has already
+// recorded them, so the link graph still shows the frontier the crawl stopped
+// at — the bound limits what is fetched, not what is known.
+func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, parent *URLItem) {
+	childDepth := parent.Depth + 1
+	if c.bounded() && childDepth > c.config.MaxDepth {
+		return
+	}
+
 	var newURLs []string
 	for _, link := range links {
 		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {
@@ -607,7 +656,13 @@ func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL str
 	}
 
 	if len(newURLs) > 0 {
-		if err := c.storage.AddToQueue(newURLs); err != nil {
+		var err error
+		if c.bounded() {
+			err = c.storage.AddToQueueWithDepth(newURLs, childDepth)
+		} else {
+			err = c.storage.AddToQueue(newURLs)
+		}
+		if err != nil {
 			slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
 		}
 	}

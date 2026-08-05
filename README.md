@@ -51,6 +51,9 @@ Requirements: Go 1.23+
 # Seed URLs from a file (one per line; '-' reads stdin)
 ./linktadoru --seed-file urls.txt
 
+# Crawl each seed and one hop out from it
+./linktadoru --seed-file urls.txt --max-depth 1
+
 # View current configuration
 ./linktadoru --show-config
 
