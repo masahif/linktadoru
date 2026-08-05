@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-05
+
+### Security
+- Redirect targets are now re-checked against the host policy on every hop.
+  Only the hop count was bounded before, so a redirect could steer the crawler
+  onto a host it was never allowed to reach — including link-local and loopback
+  addresses — even with `follow_external_hosts: false`.
+- Credentials are removed once a redirect crosses to a different origin:
+  `Authorization`, `Proxy-Authorization`, `Cookie`, the configured API-key
+  header, and any custom headers. Go's built-in redirect policy does not cover
+  the API-key and custom headers, so they were forwarded to whatever host a
+  redirect named.
+- Affected versions: v0.5.0 through v0.9.1. Upgrade to v0.9.2.
+  See [GHSA-2692-7f24-52v6](https://github.com/masahif/linktadoru/security/advisories/GHSA-2692-7f24-52v6).
+
 ## [0.9.1] - 2026-07-03
 
 ### Changed
