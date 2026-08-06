@@ -1,8 +1,11 @@
 package storage
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/masahif/linktadoru/internal/crawler"
 )
 
 // The retryable set must match the error types the crawler actually writes.
@@ -15,6 +18,7 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 	// page_processor.go and crawler.go SavePageError call sites).
 	errorTypes := map[string]string{
 		"https://example.com/net":  "network_error",
+		"https://example.com/http": "http_transient",
 		"https://example.com/proc": "processing_error",
 		"https://example.com/rate": "rate_limit_error",
 		"https://example.com/big":  "response_too_large",
@@ -32,29 +36,77 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 		}
 	}
 
-	// Only the transient network_error is eligible.
+	// Transport and selected HTTP failures are eligible.
 	items, err := store.GetRetryablePages(3)
 	if err != nil {
 		t.Fatalf("GetRetryablePages: %v", err)
 	}
-	if len(items) != 1 || items[0].URL != "https://example.com/net" {
-		t.Errorf("retryable = %+v, want exactly the network_error page", items)
+	if len(items) != 2 {
+		t.Errorf("retryable = %+v, want network and transient HTTP pages", items)
 	}
 
 	requeued, err := store.RequeueErrorPages(3)
 	if err != nil {
 		t.Fatalf("RequeueErrorPages: %v", err)
 	}
-	if requeued != 1 {
-		t.Errorf("requeued = %d, want 1", requeued)
+	if requeued != 2 {
+		t.Errorf("requeued = %d, want 2", requeued)
 	}
-	if got := mustStatus(t, store, "https://example.com/net"); got != "pending" {
-		t.Errorf("network_error page status = %q, want pending (requeued)", got)
+	for _, u := range []string{"https://example.com/net", "https://example.com/http"} {
+		if got := mustStatus(t, store, u); got != "pending" {
+			t.Errorf("%s status = %q, want pending (requeued)", u, got)
+		}
 	}
 	for _, u := range []string{"https://example.com/proc", "https://example.com/rate", "https://example.com/big"} {
 		if got := mustStatus(t, store, u); got != "error" {
 			t.Errorf("%s status = %q, want error (deterministic failures must not requeue)", u, got)
 		}
+	}
+}
+
+func TestSavePageResponseErrorIsAtomicAndInspectable(t *testing.T) {
+	store := newTempStorage(t)
+	const pageURL = "https://example.com/unavailable"
+	if err := store.AddToQueue([]string{pageURL}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("GetNextFromQueue: item=%v err=%v", item, err)
+	}
+	page := &crawler.PageData{
+		URL:          pageURL,
+		StatusCode:   503,
+		TTFB:         12 * time.Millisecond,
+		DownloadTime: 34 * time.Millisecond,
+		ResponseSize: 9,
+		HTTPHeaders:  map[string]string{"x-test": "preserved"},
+		CrawledAt:    time.Now().UTC(),
+	}
+	if err := store.SavePageResponseError(item.ID, page, "http_transient", "HTTP 503"); err != nil {
+		t.Fatal(err)
+	}
+
+	var status, headers, errorType string
+	var statusCode, retryCount, ttfbMS, downloadMS, responseSize int
+	if err := store.db.QueryRow(`
+		SELECT status, status_code, response_http_headers, retry_count,
+		       last_error_type, ttfb_ms, download_time_ms, response_size_bytes
+		FROM pages WHERE id = ?
+	`, item.ID).Scan(
+		&status, &statusCode, &headers, &retryCount, &errorType,
+		&ttfbMS, &downloadMS, &responseSize,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if status != "error" || statusCode != 503 || retryCount != 1 || errorType != "http_transient" {
+		t.Fatalf("stored state = %q %d %d %q", status, statusCode, retryCount, errorType)
+	}
+	if !strings.Contains(headers, "preserved") {
+		t.Fatalf("headers = %q", headers)
+	}
+	if ttfbMS != 12 || downloadMS != 34 || responseSize != 9 {
+		t.Fatalf("timing/size = %d/%d/%d, want 12/34/9", ttfbMS, downloadMS, responseSize)
 	}
 }
 

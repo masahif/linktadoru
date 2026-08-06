@@ -154,6 +154,42 @@ func TestPageProcessor(t *testing.T) {
 	})
 }
 
+func TestPageProcessorClassifiesTransientHTTP(t *testing.T) {
+	for _, status := range []int{408, 429, 500, 502, 503, 504} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				w.Header().Set("X-Test", "observed")
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("temporary"))
+			}))
+			defer server.Close()
+
+			client := NewHTTPClient("test", time.Second)
+			defer client.Close()
+			result, err := NewPageProcessor(client).Process(context.Background(), server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Page == nil || result.Page.StatusCode != status {
+				t.Fatalf("Page = %#v, want observed status %d", result.Page, status)
+			}
+			if result.Page.HTTPHeaders["x-test"] != "observed" || result.Page.ResponseSize == 0 {
+				t.Fatalf("response observation was not preserved: %#v", result.Page)
+			}
+			if result.Error == nil || result.Error.ErrorType != "http_transient" {
+				t.Fatalf("Error = %#v, want http_transient", result.Error)
+			}
+		})
+	}
+
+	for _, status := range []int{403, 404, 410} {
+		if isTransientHTTPStatus(status) {
+			t.Fatalf("status %d must remain terminal", status)
+		}
+	}
+}
+
 func validateHTMLPageLinks(t *testing.T, result *PageResult) {
 	if result.Page.ContentHash == "" {
 		t.Error("Expected non-empty content hash")

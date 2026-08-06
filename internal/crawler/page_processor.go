@@ -3,6 +3,7 @@ package crawler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -89,6 +90,14 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 		Page:  pageData,
 		Links: []*LinkData{},
 	}
+	if isTransientHTTPStatus(resp.StatusCode) {
+		result.Error = &CrawlError{
+			URL:          url,
+			ErrorType:    "http_transient",
+			ErrorMessage: fmt.Sprintf("HTTP %d", resp.StatusCode),
+			OccurredAt:   time.Now().UTC(),
+		}
+	}
 
 	// Only parse HTML content
 	if !isHTML || resp.StatusCode >= 400 {
@@ -142,4 +151,13 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 	}
 
 	return result, nil
+}
+
+func isTransientHTTPStatus(status int) bool {
+	switch status {
+	case 408, 429, 500, 502, 503, 504:
+		return true
+	default:
+		return false
+	}
 }

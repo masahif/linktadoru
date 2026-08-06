@@ -22,8 +22,8 @@ import (
 // The retry phase was unreachable for the project's entire history: the last
 // exiting worker cancelled the crawl context (to stop the stats reporter),
 // which made Start take its "cancelled" branch instead of calling
-// performRetries. A retry_count of 2 — initial attempt plus exactly one retry
-// pass — proves the phase now runs.
+// performRetries. A retry_count of 3 proves the phase now runs until the
+// per-URL attempt cap is reached.
 func TestRetryPhaseRunsAfterCrawlCompletes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	deadURL := server.URL
@@ -72,8 +72,8 @@ func TestRetryPhaseRunsAfterCrawlCompletes(t *testing.T) {
 	if status != "error" {
 		t.Errorf("status = %q, want error", status)
 	}
-	if retryCount != 2 {
-		t.Errorf("retry_count = %d, want 2 (initial attempt + one retry pass)", retryCount)
+	if retryCount != 3 {
+		t.Errorf("retry_count = %d, want 3 total attempts", retryCount)
 	}
 }
 

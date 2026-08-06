@@ -189,6 +189,8 @@ func TestFlagBinding(t *testing.T) {
 		"user-agent",
 		"ignore-robots-txt",
 		"limit",
+		"max-depth",
+		"seed-file",
 		"include-patterns",
 		"exclude-patterns",
 		"database",

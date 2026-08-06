@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--seed-file` reads generated seed lists from a file or standard input.
+- `max_depth: 1` crawls each seed and its direct internal links without a
+  global breadth-first barrier; the initial implementation requires a fresh
+  database. `max_depth: 0` preserves the existing unlimited crawl.
+
+### Fixed
+- HTTP 408, 429, 500, 502, 503, and 504 responses are now retained as errors
+  and retried after normal queue work, up to 3 total attempts per URL.
+
 ## [0.9.2] - 2026-08-05
 
 ### Security

@@ -48,6 +48,9 @@ make build
 # 設定ファイルを使用
 ./linktadoru --config linktadoru.yml https://httpbin.org
 
+# 生成したシード一覧の各URLと、その直接リンクをクロール
+./linktadoru --seed-file urls.txt --max-depth 1 --limit 0
+
 # 現在の設定を表示
 ./linktadoru --show-config
 
@@ -80,6 +83,7 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                     # 0 = 無制限
+max_depth: 0                 # 0 = 無制限、1 = シードと直接リンク
 
 # URL フィルタリング
 include_patterns: []
