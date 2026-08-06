@@ -20,74 +20,7 @@ Crawl up to 10 pages with 2 concurrent workers and a 2-second delay (`--delay` t
 ./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
-### 3. Seed URLs from a File or Standard Input
-
-Use `--seed-file` when the URL list is generated per run, is too long for the
-command line, or is maintained outside the repository:
-
-```bash
-./linktadoru --seed-file urls.txt
-
-# '-' reads standard input, so the list can come from a pipe
-fetch-target-list | ./linktadoru --config prod.yml --seed-file -
-```
-
-The file holds one URL per line. Surrounding whitespace is trimmed, blank lines
-and lines starting with `#` are ignored, and CRLF line endings and a leading
-UTF-8 byte order mark are handled:
-
-```text
-# nightly targets
-https://example.com
-https://docs.example.com/guide
-```
-
-`--seed-file` and URL arguments cannot be combined — pass the seeds one way or
-the other. Both take precedence over `seed_urls` in the configuration file, so a
-stable config file can be reused while only the list changes.
-
-A missing or unreadable file, or a line longer than 64 KiB, stops the run with an
-error rather than crawling a partial list. A file that names no URLs at all is
-treated like a run with no seeds: the crawler resumes from the queue in the
-existing database, or reports that there is nothing to crawl.
-
-### 4. Bounding the Crawl Depth
-
-`--max-depth` stops the crawl a fixed number of hops from the seeds. Seeds are
-depth 0, so this crawls each listed site's landing page and everything one click
-from it:
-
-```bash
-./linktadoru --seed-file urls.txt --max-depth 1
-```
-
-Unlike `--limit`, which is a single budget shared by every seed, the depth bound
-applies to every seed alike: on its own, each seed gets the same hop allowance
-however long the list is. Combining it with `--limit` reintroduces the shared
-budget — the run stops once the page count is spent, so the later seeds can still
-end up incompletely crawled. Links beyond the bound are still recorded for link
-analysis, they are just not fetched.
-
-How the crawl is scheduled depends on the bound:
-
-| Setting | Scheduling |
-|---|---|
-| `--max-depth 0` (default) | Asynchronous; no depth is recorded |
-| `--max-depth 1` | Asynchronous, shallowest-first; retries after the queue drains |
-| `--max-depth 2` and above | One depth layer at a time; retries within each layer |
-
-At `--max-depth 1` the crawler prefers seeds over their links but never waits on
-one, so a slow seed holds up only its own worker. From `--max-depth 2` each
-depth is finished before the next begins — a page reached later by a shorter
-route would change whether its own links fall inside the bound — which does mean
-one slow page holds up its whole layer.
-
-`--max-depth` cannot be used on a database that still has unfinished pages from
-an unbounded run — queued URLs, or failures that still have retries left: use a
-new database file, or finish that work without `--max-depth` first. See
-[Configuration Reference — Crawl Depth](configuration.md#crawl-depth).
-
-### 5. Using Configuration File
+### 3. Using Configuration File
 
 Create a configuration file:
 
@@ -172,26 +105,13 @@ Every URL gets one row in the `pages` table; the `status` column tracks its life
 - `discovered` — found as a link on a crawled page; recorded for link analysis only, not queued for crawling
 - `pending` — queued for crawling (seed URLs, and discovered links that pass the include/exclude filters)
 - `processing` — currently being fetched by a worker
-- `completed` — the fetch finished. Note: permanent HTTP answers such as 404 and 410 are also `completed`; check the `status_code` column for the result
+- `completed` — the fetch finished. Note: HTTP errors such as 404 are also `completed`; check the `status_code` column for the result
 - `skipped` — blocked by robots.txt
-- `error` — the fetch did not produce an answer we accepted: a transport-level failure (DNS, timeout, connection reset), a transient HTTP response that never recovered, a response body exceeding `max_response_size`, or a malformed URL
-
-An `error` row still carries whatever was observed. That makes two cases distinguishable, which matters when comparing one crawl against another:
-
-- `error` with a `status_code` — the server answered, transiently, and the retries ran out. The page's current content is **unknown**.
-- `error` with no `status_code` — no HTTP response ever arrived.
-
-Neither is evidence that a page was removed. An explicit `404` or `410`, recorded as `completed`, is the deletion signal.
+- `error` — the fetch failed: transport-level failures (DNS, timeout, connection reset), a response body exceeding `max_response_size`, or a malformed URL
 
 ### Retries
 
-Two kinds of failure are retried: transport-level failures (`network_error`), and transient HTTP responses — `408`, `429`, `500`, `502`, `503` and `504` — which are the server saying it could not answer right now. Every other status is a real answer about the resource and is never retried; retrying a `404` would only turn a useful signal into an unknown.
-
-Each URL gets 3 attempts in total for the whole crawl of a database, tracked in `retry_count`. A run left to finish spends the budget before it returns; a run you interrupt hands the remaining attempts to the next resume against the same database rather than starting the count over. Retries happen after the normal queue drains, or — with `--max-depth` — before the next depth layer opens, so a page that recovers still contributes its links to the right layer.
-
-Attempts are paced, transport failures included — a host that times out will time out again immediately, so retrying without a wait spends the whole budget in milliseconds. A `Retry-After` header is honored, capped at 60 seconds so a mistaken or hostile value cannot stall the crawl. Without that header the wait starts at 1 second and doubles per attempt, up to the same cap. The wait is stored in the database, so it survives an interrupted run: resuming does not restart the host immediately. Deterministic failures (malformed URLs, oversized responses) are not retried at all.
-
-Every failed attempt is recorded in the `crawl_errors` table with its status code and attempt number, so a URL that recovers on its third try still shows what the first two saw.
+After the queue drains, pages whose `last_error_type` is `network_error` are requeued for one retry pass per run, up to 3 attempts in total per URL (tracked in `retry_count`). Deterministic failures are not retried.
 
 ### robots.txt Crawl-delay
 

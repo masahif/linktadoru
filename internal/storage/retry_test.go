@@ -12,7 +12,7 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 	store := newTempStorage(t)
 
 	// One errored page per error type the crawler can write (see
-	// page_processor.go and crawler.go SaveFailedAttempt call sites).
+	// page_processor.go and crawler.go SavePageError call sites).
 	errorTypes := map[string]string{
 		"https://example.com/net":  "network_error",
 		"https://example.com/proc": "processing_error",
@@ -27,8 +27,8 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 		if err != nil || item == nil {
 			t.Fatalf("GetNextFromQueue(%s): item=%v err=%v", u, item, err)
 		}
-		if err := store.SaveFailedAttempt(item.ID, nil, et, "boom", time.Time{}); err != nil {
-			t.Fatalf("SaveFailedAttempt(%s): %v", u, err)
+		if err := store.SavePageError(item.ID, et, "boom"); err != nil {
+			t.Fatalf("SavePageError(%s): %v", u, err)
 		}
 	}
 

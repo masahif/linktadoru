@@ -130,7 +130,6 @@ func TestStartWithRealStorage(t *testing.T) {
 
 // EnhancedMockStorage tracks method calls for testing
 type EnhancedMockStorage struct {
-	unboundedOnlyStorage
 	MockStorage
 	mu                   sync.Mutex
 	addToQueueCalled     bool
@@ -225,7 +224,6 @@ func TestWorkerErrorHandling(t *testing.T) {
 
 // ErrorMockStorage for testing error scenarios
 type ErrorMockStorage struct {
-	unboundedOnlyStorage
 	MockStorage
 }
 
@@ -359,7 +357,6 @@ func TestLimitReached(t *testing.T) {
 
 // LimitTestStorage for testing limit functionality
 type LimitTestStorage struct {
-	unboundedOnlyStorage
 	MockStorage
 	items []*URLItem
 	id    int
@@ -497,7 +494,6 @@ func TestExternalHostsEnabled(t *testing.T) {
 
 // HostFilteringTestStorage for testing host filtering
 type HostFilteringTestStorage struct {
-	unboundedOnlyStorage
 	MockStorage
 }
 

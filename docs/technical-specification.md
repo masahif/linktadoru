@@ -139,18 +139,10 @@ RETURNING id, url
 
 Retries are driven by the crawl loop and the storage layer, not by the HTTP client:
 
-- Two failure classes are retryable: `network_error` (a transport failure that produced no response) and the transient HTTP responses `408`, `429`, `500`, `502`, `503` and `504`, stored as `http_NNN`
-- A transient HTTP response is recorded in full — `status_code`, `response_http_headers`, timing, size — while the row stays in `error`. The observation must survive the decision to retry, or the evidence for that decision is lost with it
-- Every other status is a permanent observation, stored as `completed` and never retried. A `404` or `410` is the deletion signal a snapshot comparison relies on
-- Attempts are bounded to 3 per URL for the whole crawl of a database, tracked in `retry_count`. Because that column is persisted, a cancelled run hands its remaining attempts to the resume; an uninterrupted run spends the budget before returning rather than leaving attempts unmade
-- Retry placement: after the queue drains for an unbounded crawl, and inside each depth layer for a bounded one, because a page that recovers on retry has children belonging to the very next layer
-- Pacing applies to every retryable failure, `network_error` included: a transport failure has no Retry-After to honour but still needs a wait, or the budget is spent against a struggling host in milliseconds
-- `Retry-After` is honored in both its delta-seconds and HTTP-date forms, capped at 60 seconds (matching the robots.txt crawl-delay cap) so an untrusted value cannot stall the crawl. Without the header the wait starts at 1 second and doubles per attempt to the same cap. The delay is a pure function of the attempt number — no jitter, so two runs over an unchanged site behave the same way
-- `pages.retry_after` holds the earliest time a row may be attempted again; NULL means no wait. It is persisted rather than held in memory because a retry can outlive the run that scheduled it — a run interrupted mid-backoff must not resume by hammering the host
-- All failures are written through a single storage path (`SaveFailedAttempt`), so a call site cannot fail a row and forget to pace it
-- Each failed attempt appends to `crawl_errors` with its `status_code` and `attempt` number
-- Deterministic failures (e.g. malformed URLs, oversized responses) are deliberately not retried
-- Cancellation does not consume a retry credit: the row is left `processing` for the next run's stale-row cleanup
+- After the queue drains, pages that failed with `last_error_type = 'network_error'` (transient transport failures) are requeued for one retry pass per run
+- Attempts are bounded to 3 in total per URL across runs, tracked in the `retry_count` column
+- There is no backoff between attempts; the normal per-domain rate limiting applies
+- Deterministic failures (e.g. malformed URLs) are deliberately not retried
 
 ### 3. HTTP Client
 

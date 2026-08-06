@@ -16,16 +16,6 @@ CREATE TABLE IF NOT EXISTS pages (
     -- Queue-related fields
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     processing_started_at DATETIME,
-
-    -- Hops from the nearest seed URL, fixed when the row is queued for crawling.
-    -- NULL means "not established": a link-graph node that has not been promoted
-    -- to the queue, or any row from a run without --max-depth, where the
-    -- asynchronous worker path cannot guarantee a shortest-path value.
-    -- (Deliberately avoids writing the discovered status in quotes here: this
-    -- DDL is stored verbatim in sqlite_master and migratePagesAddDiscovered
-    -- decides whether a database needs migrating by searching it for that
-    -- exact token.)
-    depth INTEGER,
     
     -- Crawl result fields (NULL until crawled)
     status_code INTEGER,
@@ -64,20 +54,12 @@ CREATE TABLE IF NOT EXISTS pages (
     -- Error tracking
     retry_count INTEGER DEFAULT 0,
     last_error_type TEXT,
-    last_error_message TEXT,
-
-    -- Earliest time this row may be attempted again, written when an attempt
-    -- fails with something worth retrying. NULL means "no wait": the row has
-    -- never failed, or it failed before there was any pacing to record.
-    -- A server's Retry-After has to live somewhere durable because the retry
-    -- that honours it can outlive the round that scheduled it.
-    retry_after DATETIME
+    last_error_message TEXT
 );
 
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status);
 CREATE INDEX IF NOT EXISTS idx_pages_status_added ON pages(status, added_at);
-CREATE INDEX IF NOT EXISTS idx_pages_status_depth ON pages(status, depth);
 CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
 CREATE INDEX IF NOT EXISTS idx_pages_content_hash ON pages(content_hash) WHERE content_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pages_status_code ON pages(status_code) WHERE status = 'completed';
@@ -144,22 +126,12 @@ FROM link_relations lr
 JOIN pages p1 ON lr.source_page_id = p1.id
 JOIN pages p2 ON lr.target_page_id = p2.id;
 
--- Separate errors table for detailed error tracking.
---
--- One row per failed attempt, so a URL that recovers on its third try leaves a
--- readable trail of what the first two saw. pages.retry_count is the summary;
--- this is the detail.
+-- Separate errors table for detailed error tracking
 CREATE TABLE IF NOT EXISTS crawl_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
     error_type TEXT NOT NULL,
     error_message TEXT,
-    -- The HTTP status observed on this attempt, or NULL when no response
-    -- arrived at all. This is what separates "the server said 503" from
-    -- "we never reached the server".
-    status_code INTEGER,
-    -- 1 for the first attempt at this URL, counting up.
-    attempt INTEGER,
     occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

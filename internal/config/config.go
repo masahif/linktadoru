@@ -60,7 +60,6 @@ type CrawlConfig struct {
 	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
 	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
 	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
-	MaxDepth            int           `mapstructure:"max_depth" yaml:"max_depth"`                         // Stop after N hops from the seeds (0 = unlimited)
 	MaxResponseSize     int64         `mapstructure:"max_response_size" yaml:"max_response_size"`         // Max response body size in bytes (0 = default 10MiB)
 
 	// Authentication
@@ -95,7 +94,6 @@ func DefaultConfig() *CrawlConfig {
 		IgnoreRobotsTxt:     false,
 		FollowExternalHosts: false,            // Default to same-host only for safety
 		Limit:               0,                // unlimited
-		MaxDepth:            0,                // unlimited: crawl depth is not bounded
 		MaxResponseSize:     10 * 1024 * 1024, // 10 MiB response body cap
 		DatabasePath:        "./linktadoru.db",
 		AllowedSchemes:      []string{"https://", "http://"}, // Default allowed URL schemes
@@ -127,12 +125,6 @@ func (c *CrawlConfig) Validate() error {
 
 	if c.DatabasePath == "" {
 		return ErrEmptyDatabasePath
-	}
-
-	// A negative bound has no sensible reading: 0 already means "unlimited",
-	// so anything below it is a typo rather than an intent.
-	if c.MaxDepth < 0 {
-		return ErrInvalidMaxDepth
 	}
 
 	// Validate authentication configuration
