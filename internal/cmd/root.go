@@ -66,6 +66,7 @@ func init() {
 
 	// Configuration management flags
 	rootCmd.Flags().Bool("show-config", false, "Display current configuration in YAML format and exit")
+	rootCmd.Flags().String("seed-file", "", "Read seed URLs from a file, one per line ('-' reads stdin)")
 
 	// Basic crawling flags (updated defaults)
 	rootCmd.Flags().IntP("concurrency", "c", 2, "Number of concurrent workers")
@@ -75,6 +76,7 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
+	rootCmd.Flags().Int("max-depth", 0, "Crawl direct links from seeds (0=unlimited, 1=one hop)")
 	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
@@ -113,6 +115,7 @@ func init() {
 		{"ignore_robots_txt", "ignore-robots-txt"},
 		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
+		{"max_depth", "max-depth"},
 		{"max_response_size", "max-response-size"},
 		{"include_patterns", "include-patterns"},
 		{"exclude_patterns", "exclude-patterns"},
@@ -197,6 +200,29 @@ func showCurrentConfig(cfg *config.CrawlConfig) error {
 	return nil
 }
 
+func applySeedURLs(cmd *cobra.Command, args []string, cfg *config.CrawlConfig) error {
+	if !cmd.Flags().Changed("seed-file") {
+		if len(args) > 0 {
+			cfg.SeedURLs = args
+		}
+		return nil
+	}
+
+	path, _ := cmd.Flags().GetString("seed-file")
+	if path == "" {
+		return fmt.Errorf("--seed-file requires a path ('-' reads stdin)")
+	}
+	if len(args) > 0 {
+		return fmt.Errorf("--seed-file and URL arguments cannot be combined")
+	}
+	urls, err := readSeedURLs(path, cmd.InOrStdin())
+	if err != nil {
+		return err
+	}
+	cfg.SeedURLs = urls
+	return nil
+}
+
 func runCrawler(cmd *cobra.Command, args []string) error {
 	// Load configuration
 	// Handle --show-config flag first
@@ -204,12 +230,12 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 
 	cfg := config.DefaultConfig()
 
-	// Set seed URLs from command line arguments
-	cfg.SeedURLs = args
-
 	// Override with viper values
 	if err := viper.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	if err := applySeedURLs(cmd, args, cfg); err != nil {
+		return err
 	}
 
 	// Load headers from environment variables (Issue #8 specification)
@@ -286,11 +312,12 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Starting crawler with configuration:\n")
 	if len(cfg.SeedURLs) > 0 {
-		fmt.Printf("  Seed URLs: %v\n", cfg.SeedURLs)
+		fmt.Printf("  Seed URLs: %d\n", len(cfg.SeedURLs))
 	} else {
 		fmt.Printf("  Seed URLs: (none - resuming from existing queue)\n")
 	}
 	fmt.Printf("  Limit: %d\n", cfg.Limit)
+	fmt.Printf("  Max Depth: %d\n", cfg.MaxDepth)
 	fmt.Printf("  Concurrency: %d\n", cfg.Concurrency)
 	fmt.Printf("  Request Delay: %v\n", cfg.RequestDelay)
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)

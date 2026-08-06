@@ -25,6 +25,7 @@ type DefaultCrawler struct {
 	rateLimiter  *RateLimiter
 	robotsParser *RobotsParser
 	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
+	seedURLs     map[string]struct{}
 
 	// Include/exclude patterns compiled once at construction. Compiling here
 	// (a) rejects an invalid pattern at startup instead of silently never
@@ -217,11 +218,23 @@ func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
 //  1. Add seed URLs to queue with 'pending' status
 //  2. Start configured number of workers
 //  3. Workers compete for 'pending' items using atomic status updates
-//  4. Continue until queue is empty or limits reached, then retry
-//     transient failures once before returning
+//  4. Continue until queue is empty or limits reached, then retry transient
+//     failures until each URL reaches the three-attempt cap
 func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
+	if c.config.MaxDepth == 1 {
+		if len(seedURLs) == 0 {
+			return fmt.Errorf("--max-depth=1 requires seed URLs and a fresh database")
+		}
+		hasPages, err := c.storage.HasAnyPages()
+		if err != nil {
+			return fmt.Errorf("failed to inspect database before one-hop crawl: %w", err)
+		}
+		if hasPages {
+			return fmt.Errorf("--max-depth=1 requires a fresh database")
+		}
+	}
 
 	// Reset rows left in 'processing' by a previous interrupted run back to
 	// 'pending'. No workers are running yet, so every 'processing' row is stale.
@@ -231,6 +244,12 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	// review follow-up). Passing 0 treats all current 'processing' rows as stale.
 	if err := c.storage.CleanupStaleProcessing(0); err != nil {
 		slog.Error("Failed to reset stale processing rows", "error", err)
+	}
+	if c.config.MaxDepth == 1 {
+		c.seedURLs = make(map[string]struct{}, len(seedURLs))
+		for _, seedURL := range seedURLs {
+			c.seedURLs[seedURL] = struct{}{}
+		}
 	}
 
 	if len(seedURLs) > 0 {
@@ -298,49 +317,21 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 func (c *DefaultCrawler) performRetries() error {
 	const maxRetries = 3
 
-	retryablePages, err := c.storage.GetRetryablePages(maxRetries)
-	if err != nil {
-		return fmt.Errorf("failed to get retryable pages: %w", err)
-	}
-
-	if len(retryablePages) == 0 {
-		slog.Info("No pages available for retry")
-		return nil
-	}
-
-	slog.Info("Found pages for retry", "count", len(retryablePages))
-
-	// Requeue error pages back to pending status
-	requeued, err := c.storage.RequeueErrorPages(maxRetries)
-	if err != nil {
-		return fmt.Errorf("failed to requeue error pages: %w", err)
-	}
-
-	if requeued > 0 {
-		slog.Info("Requeued error pages for retry", "count", requeued)
-
-		// Check if we have items to process after requeueing
-		hasItems, err := c.storage.HasQueuedItems()
+	for c.ctx.Err() == nil {
+		requeued, err := c.storage.RequeueErrorPages(maxRetries)
 		if err != nil {
-			return fmt.Errorf("failed to check queued items: %w", err)
+			return fmt.Errorf("failed to requeue error pages: %w", err)
 		}
-
-		if hasItems {
-			slog.Info("Starting retry processing")
-			// Start workers again for retry processing. c.wg is empty here
-			// (Start waited for all workers before calling us) and c.ctx is
-			// still live, so the retry workers actually run.
-			for i := 0; i < c.config.Concurrency; i++ {
-				c.wg.Add(1)
-				go c.worker(i)
-			}
-
-			// Wait for retry completion
-			c.wg.Wait()
-			slog.Info("Retry processing completed")
+		if requeued == 0 {
+			return nil
 		}
+		slog.Info("Retrying failed pages", "count", requeued)
+		for i := 0; i < c.config.Concurrency; i++ {
+			c.wg.Add(1)
+			go c.worker(i)
+		}
+		c.wg.Wait()
 	}
-
 	return nil
 }
 
@@ -554,10 +545,18 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 
 	// Move this page out of 'processing' to a terminal state.
 	if result.Page != nil {
-		if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
-			slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
+		var err error
+		if result.Error != nil {
+			err = c.storage.SavePageResponseError(item.ID, result.Page, result.Error.ErrorType, result.Error.ErrorMessage)
 		} else {
+			err = c.storage.SavePageResult(item.ID, result.Page)
+		}
+		if err != nil {
+			slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
+		} else if result.Error == nil {
 			c.incrementCrawledCount()
+		} else {
+			c.incrementErrorCount()
 		}
 	} else {
 		// No page was produced — e.g. a transport/network failure that the
@@ -592,6 +591,12 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 
 // processNewURLs collects and queues new URLs from links
 func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
+	if c.config.MaxDepth == 1 {
+		if _, isSeed := c.seedURLs[sourceURL]; !isSeed {
+			return
+		}
+	}
+
 	var newURLs []string
 	for _, link := range links {
 		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {

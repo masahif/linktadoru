@@ -48,6 +48,9 @@ Requirements: Go 1.23+
 # Using config file
 ./linktadoru --config linktadoru.yml https://httpbin.org
 
+# Generated seed list: each seed plus its direct links
+./linktadoru --seed-file urls.txt --max-depth 1 --limit 0
+
 # View current configuration
 ./linktadoru --show-config
 
@@ -80,6 +83,7 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                     # 0 = unlimited
+max_depth: 0                 # 0 = unlimited, 1 = seeds plus direct links
 
 # URL filtering
 include_patterns: []

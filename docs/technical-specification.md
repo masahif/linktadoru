@@ -139,9 +139,9 @@ RETURNING id, url
 
 Retries are driven by the crawl loop and the storage layer, not by the HTTP client:
 
-- After the queue drains, pages that failed with `last_error_type = 'network_error'` (transient transport failures) are requeued for one retry pass per run
+- After the queue drains, transient transport failures and HTTP 408, 429, 500, 502, 503, and 504 responses are requeued until the attempt cap is reached
 - Attempts are bounded to 3 in total per URL across runs, tracked in the `retry_count` column
-- There is no backoff between attempts; the normal per-domain rate limiting applies
+- There is no additional backoff and `Retry-After` is not interpreted; the normal per-domain request delay and robots.txt `Crawl-delay` still apply
 - Deterministic failures (e.g. malformed URLs) are deliberately not retried
 
 ### 3. HTTP Client

@@ -42,6 +42,10 @@ func (m *MockStorage) SavePageResult(id int, page *PageData) error {
 	return nil
 }
 
+func (m *MockStorage) SavePageResponseError(id int, page *PageData, errorType, errorMessage string) error {
+	return nil
+}
+
 func (m *MockStorage) SavePageError(id int, errorType, errorMessage string) error {
 	return nil
 }
@@ -67,6 +71,10 @@ func (m *MockStorage) GetURLStatus(url string) (status string, exists bool) {
 }
 
 func (m *MockStorage) HasQueuedItems() (bool, error) {
+	return false, nil
+}
+
+func (m *MockStorage) HasAnyPages() (bool, error) {
 	return false, nil
 }
 

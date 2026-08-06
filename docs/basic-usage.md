@@ -20,7 +20,29 @@ Crawl up to 10 pages with 2 concurrent workers and a 2-second delay (`--delay` t
 ./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
-### 3. Using Configuration File
+### 3. Seed Lists and One-Hop Crawls
+
+Read generated targets from a file, or use `-` for standard input:
+
+```bash
+./linktadoru --seed-file urls.txt --max-depth 1 --limit 0
+fetch-target-list | ./linktadoru --seed-file - --max-depth 1 --limit 0
+```
+
+Seed files contain one URL per line. Blank lines, surrounding whitespace, and
+lines beginning with `#` are ignored. `--seed-file` cannot be combined with URL
+arguments.
+
+The first implementation intentionally supports only `max_depth` 0 (unlimited)
+and 1 (each seed plus its direct internal links). It uses the existing
+asynchronous queue, so with multiple workers one slow seed does not prevent
+other workers from progressing. Use a fresh database for each comparison crawl.
+The initial `max_depth: 1` implementation does not resume a non-empty database.
+
+Selected temporary responses (408, 429, 500, 502, 503, 504) are retained in the
+database and retried after normal queue work, up to three total attempts.
+
+### 4. Using Configuration File
 
 Create a configuration file:
 
@@ -111,7 +133,11 @@ Every URL gets one row in the `pages` table; the `status` column tracks its life
 
 ### Retries
 
-After the queue drains, pages whose `last_error_type` is `network_error` are requeued for one retry pass per run, up to 3 attempts in total per URL (tracked in `retry_count`). Deterministic failures are not retried.
+After the queue drains, transient transport failures and HTTP 408, 429, 500,
+502, 503, and 504 responses are requeued until each URL reaches 3 total
+attempts (tracked in `retry_count`). Deterministic failures are not retried.
+Retries still follow the per-domain request delay and robots.txt `Crawl-delay`,
+but do not interpret `Retry-After` and may revisit a host sooner than requested.
 
 ### robots.txt Crawl-delay
 
@@ -119,7 +145,7 @@ A `Crawl-delay` in robots.txt is honored when it is slower than your configured 
 
 ### Interrupting and Resuming
 
-Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start.
+Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start. The initial `max_depth: 1` mode is the exception: it requires a fresh, empty database.
 
 ## Output Analysis
 

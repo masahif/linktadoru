@@ -239,6 +239,28 @@ func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
 	return nil
 }
 
+// SavePageResponseError atomically preserves an observed HTTP response while
+// leaving the URL eligible for the existing retry queue.
+func (s *SQLiteStorage) SavePageResponseError(id int, page *crawler.PageData, errorType, errorMessage string) error {
+	headersJSON, err := json.Marshal(page.HTTPHeaders)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HTTP headers: %w", err)
+	}
+	_, err = s.db.Exec(`
+		UPDATE pages SET
+			status = 'error', status_code = ?, ttfb_ms = ?, download_time_ms = ?,
+			response_size_bytes = ?, response_http_headers = ?, crawled_at = ?,
+			last_error_type = ?, last_error_message = ?, retry_count = retry_count + 1
+		WHERE id = ?
+	`, page.StatusCode, page.TTFB.Milliseconds(), page.DownloadTime.Milliseconds(),
+		page.ResponseSize, string(headersJSON), sqlTime(page.CrawledAt),
+		errorType, errorMessage, id)
+	if err != nil {
+		return fmt.Errorf("failed to save HTTP response error: %w", err)
+	}
+	return nil
+}
+
 // SavePageError marks a page as errored with error details
 func (s *SQLiteStorage) SavePageError(id int, errorType, errorMessage string) error {
 	_, err := s.db.Exec(`
@@ -482,14 +504,23 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	return count > 0, nil
 }
 
+func (s *SQLiteStorage) HasAnyPages() (bool, error) {
+	var found bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pages)`).Scan(&found); err != nil {
+		return false, fmt.Errorf("failed to check pages: %w", err)
+	}
+	return found, nil
+}
+
 // retryableErrorTypes lists the last_error_type values eligible for retry.
-// These MUST match the strings the crawler actually writes via SavePageError:
-// 'network_error' (transient transport failure, see page_processor.go) is
-// worth retrying. Deliberately excluded: 'processing_error' and
+// These MUST match the strings the crawler writes for retryable failures:
+// 'network_error' covers transient transport failures and 'http_transient'
+// covers selected temporary HTTP responses. Deliberately excluded:
+// 'processing_error' and
 // 'rate_limit_error' (malformed URLs — retrying reproduces the same failure)
 // and 'response_too_large' (deterministic — the page will exceed the limit
 // again).
-const retryableErrorTypes = `('network_error')`
+const retryableErrorTypes = `('network_error', 'http_transient')`
 
 // GetRetryablePages returns pages with error status that can be retried
 func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
