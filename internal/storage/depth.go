@@ -72,8 +72,8 @@ func (s *SQLiteStorage) GetNextFromQueueAtDepth(depth int) (*crawler.URLItem, er
 			ORDER BY added_at ASC
 			LIMIT 1
 		) AND status = 'pending'
-		RETURNING id, url, depth
-	`, sqlTime(time.Now()), depth).Scan(&item.ID, &item.URL, &item.Depth)
+		RETURNING id, url, depth, retry_count
+	`, sqlTime(time.Now()), depth).Scan(&item.ID, &item.URL, &item.Depth, &item.RetryCount)
 
 	if err == sql.ErrNoRows {
 		return nil, nil // no work at this depth
@@ -152,7 +152,8 @@ func (s *SQLiteStorage) HasRetryablePagesAtDepth(maxRetries, depth int) (bool, e
 }
 
 // RequeueErrorPagesAtDepth moves this layer's retryable failures back to
-// 'pending' so the layer's workers pick them up again.
+// 'pending' so the layer's workers pick them up again. Rows still waiting out
+// a Retry-After are left alone; see EarliestRetryTimeAtDepth.
 func (s *SQLiteStorage) RequeueErrorPagesAtDepth(maxRetries, depth int) (int, error) {
 	result, err := s.db.Exec(`
 		UPDATE pages
@@ -161,7 +162,8 @@ func (s *SQLiteStorage) RequeueErrorPagesAtDepth(maxRetries, depth int) (int, er
 		  AND depth = ?
 		  AND retry_count < ?
 		  AND last_error_type IN `+retryableErrorTypes+`
-	`, depth, maxRetries)
+		  AND `+retryDueClause+`
+	`, depth, maxRetries, sqlTime(time.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to requeue error pages at depth %d: %w", depth, err)
 	}
@@ -172,6 +174,17 @@ func (s *SQLiteStorage) RequeueErrorPagesAtDepth(maxRetries, depth int) (int, er
 	}
 
 	return int(rowsAffected), nil
+}
+
+// EarliestRetryTimeAtDepth is EarliestRetryTime scoped to one layer.
+func (s *SQLiteStorage) EarliestRetryTimeAtDepth(maxRetries, depth int) (*time.Time, error) {
+	return s.earliestRetryTime(`
+		SELECT MIN(COALESCE(retry_after, '')) FROM pages
+		WHERE status = 'error'
+		  AND depth = ?
+		  AND retry_count < ?
+		  AND last_error_type IN `+retryableErrorTypes+`
+	`, depth, maxRetries)
 }
 
 // HasDepthlessWork reports whether the database holds unfinished work whose

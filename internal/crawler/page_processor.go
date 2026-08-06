@@ -3,7 +3,9 @@ package crawler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -88,6 +90,21 @@ func (p *DefaultPageProcessor) Process(ctx context.Context, url string) (*PageRe
 	result := &PageResult{
 		Page:  pageData,
 		Links: []*LinkData{},
+	}
+
+	// A transient response is reported as both: the observation we made, and a
+	// reason to ask again. Page stays set so the status code, headers and
+	// timing survive into the row even though the row will not be marked
+	// completed — without that, deciding to retry would throw away the very
+	// evidence (Retry-After, the status itself) that explains the decision.
+	if isTransientStatus(resp.StatusCode) {
+		result.Error = &CrawlError{
+			URL:          url,
+			ErrorType:    transientErrorType(resp.StatusCode),
+			ErrorMessage: fmt.Sprintf("server returned %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			StatusCode:   resp.StatusCode,
+			OccurredAt:   time.Now().UTC(),
+		}
 	}
 
 	// Only parse HTML content

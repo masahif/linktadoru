@@ -67,15 +67,23 @@ func (s *barrierFailStorage) HasQueuedItemsAtDepth(depth int) (bool, error) {
 	return s.pending[depth] > 0, nil
 }
 
-func (s *barrierFailStorage) HasRetryablePagesAtDepth(_, _ int) (bool, error) {
+// EarliestRetryTimeAtDepth is the query retryLayer actually consults, so both
+// failure modes are injected here: a query that errors, and one that reports
+// due work which the requeue below then refuses to move.
+func (s *barrierFailStorage) EarliestRetryTimeAtDepth(_, _ int) (*time.Time, error) {
 	if s.failRetryCheck {
-		return false, errors.New("simulated database failure")
+		return nil, errors.New("simulated database failure")
 	}
-	return s.requeueZero, nil
+	if s.requeueZero {
+		// Due now, so no Retry-After wait stands between this and the requeue.
+		due := time.Now()
+		return &due, nil
+	}
+	return nil, nil
 }
 
 func (s *barrierFailStorage) RequeueErrorPagesAtDepth(_, _ int) (int, error) {
-	// Disagrees with HasRetryablePagesAtDepth on purpose.
+	// Disagrees with EarliestRetryTimeAtDepth on purpose.
 	return 0, nil
 }
 
@@ -90,7 +98,7 @@ func (s *barrierFailStorage) AddToQueue([]string) error           { return nil }
 func (s *barrierFailStorage) GetNextFromQueue() (*URLItem, error) { return nil, nil }
 func (s *barrierFailStorage) UpdatePageStatus(int, string) error  { return nil }
 func (s *barrierFailStorage) SavePageResult(int, *PageData) error { return nil }
-func (s *barrierFailStorage) SavePageError(int, string, string) error {
+func (s *barrierFailStorage) SaveFailedAttempt(int, *PageData, string, string, time.Time) error {
 	return nil
 }
 func (s *barrierFailStorage) SavePageSkipped(int, string, string) error { return nil }

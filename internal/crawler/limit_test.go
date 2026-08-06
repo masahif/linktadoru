@@ -42,7 +42,7 @@ func (m *MockStorage) SavePageResult(id int, page *PageData) error {
 	return nil
 }
 
-func (m *MockStorage) SavePageError(id int, errorType, errorMessage string) error {
+func (m *MockStorage) SaveFailedAttempt(id int, page *PageData, errorType, errorMessage string, retryAfter time.Time) error {
 	return nil
 }
 

@@ -22,8 +22,16 @@ import (
 // The retry phase was unreachable for the project's entire history: the last
 // exiting worker cancelled the crawl context (to stop the stats reporter),
 // which made Start take its "cancelled" branch instead of calling
-// performRetries. A retry_count of 2 — initial attempt plus exactly one retry
-// pass — proves the phase now runs.
+// performRetries. A retry_count above 1 proves the phase now runs.
+//
+// It reaches crawler.MaxRetries because an uninterrupted run spends the whole
+// per-URL budget before returning rather than making a single pass. The budget
+// itself is per URL across the database (retry_count is persisted, so a
+// cancelled run carries its remainder into the resume); what matters here is
+// that a run left to finish does not leave attempts unmade. With a database
+// created fresh per crawl there is no later run to spend them, and the
+// transient failure they would have recovered from is indistinguishable from a
+// page that is genuinely gone.
 func TestRetryPhaseRunsAfterCrawlCompletes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	deadURL := server.URL
@@ -72,8 +80,9 @@ func TestRetryPhaseRunsAfterCrawlCompletes(t *testing.T) {
 	if status != "error" {
 		t.Errorf("status = %q, want error", status)
 	}
-	if retryCount != 2 {
-		t.Errorf("retry_count = %d, want 2 (initial attempt + one retry pass)", retryCount)
+	if retryCount != crawler.MaxRetries {
+		t.Errorf("retry_count = %d, want %d (an uninterrupted run spends the whole per-URL budget)",
+			retryCount, crawler.MaxRetries)
 	}
 }
 
