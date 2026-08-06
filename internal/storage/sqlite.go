@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
@@ -579,42 +578,31 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	return count > 0, nil
 }
 
-// retryableErrorTypes is the SQL list of last_error_type values eligible for
-// retry: 'network_error' (a transport failure that never produced a response)
-// and the 'http_NNN' values for the transient statuses.
+// retryableErrorTypesJSON is the JSON array of last_error_type values eligible
+// for retry: 'network_error' (a transport failure that never produced a
+// response) and the 'http_NNN' values for the transient statuses.
 //
-// It is generated from crawler.RetryableErrorTypes rather than written out
-// here, because the two sides must not be able to disagree. A hand-maintained
-// list that gained an entry the crawler does not consider retryable would
-// requeue rows the crawler never paced — no retry_after, so due immediately —
-// and the crawler would then hammer a struggling host as fast as it could
-// claim the row. Generating it makes that drift impossible rather than merely
-// detectable.
+// Queries pass this value to SQLite's json_each table-valued function instead
+// of interpolating an IN list into SQL. That keeps the crawler and storage
+// classifications single-sourced without introducing dynamic SQL.
 //
 // Deliberately excluded: 'processing_error' and 'rate_limit_error' (malformed
 // URLs — retrying reproduces the same failure), 'response_too_large'
 // (deterministic — the page will exceed the limit again), and every other HTTP
 // status. A 403, 404 or 410 is a real answer about the resource, and retrying
 // it would turn a legitimate deletion signal into an unavailable row.
-var retryableErrorTypes = buildRetryableErrorTypes()
+var retryableErrorTypesJSON = buildRetryableErrorTypesJSON()
 
-// buildRetryableErrorTypes renders the crawler's list as a SQL IN clause. The
-// values are internal constants ('network_error' and 'http_NNN'), never user
-// input.
-func buildRetryableErrorTypes() string {
-	types := crawler.RetryableErrorTypes()
-	quoted := make([]string, 0, len(types))
-	for _, t := range types {
-		quoted = append(quoted, "'"+t+"'")
+// buildRetryableErrorTypesJSON serializes a []string, which cannot fail for
+// any value returned by the crawler. Panic keeps an impossible initialization
+// failure from silently disabling retries.
+func buildRetryableErrorTypesJSON() string {
+	encoded, err := json.Marshal(crawler.RetryableErrorTypes())
+	if err != nil {
+		panic(fmt.Sprintf("failed to encode retryable error types: %v", err))
 	}
-	return "(" + strings.Join(quoted, ", ") + ")"
+	return string(encoded)
 }
-
-// retryDueClause gates a requeue on the row's pacing. A NULL retry_after means
-// no wait was recorded and reads as "due now" for backward compatibility with
-// failures written before retry pacing was introduced. Current retryable
-// failures, including transport failures, always persist a due time.
-const retryDueClause = `(retry_after IS NULL OR retry_after <= ?)`
 
 // GetRetryablePages returns pages with error status that can be retried
 func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
@@ -623,9 +611,9 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 		FROM pages
 		WHERE status = 'error'
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
+		  AND last_error_type IN (SELECT value FROM json_each(?))
 		ORDER BY retry_count ASC, added_at ASC
-	`, maxRetries)
+	`, maxRetries, retryableErrorTypesJSON)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get retryable pages: %w", err)
 	}
@@ -658,9 +646,9 @@ func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 		SET status = 'pending', processing_started_at = NULL
 		WHERE status = 'error'
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-		  AND `+retryDueClause+`
-	`, maxRetries, sqlTime(time.Now()))
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+		  AND (retry_after IS NULL OR retry_after <= ?)
+	`, maxRetries, retryableErrorTypesJSON, sqlTime(time.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to requeue error pages: %w", err)
 	}
@@ -686,8 +674,8 @@ func (s *SQLiteStorage) EarliestRetryTime(maxRetries int) (*time.Time, error) {
 		SELECT MIN(COALESCE(retry_after, '')) FROM pages
 		WHERE status = 'error'
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-	`, maxRetries)
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+	`, maxRetries, retryableErrorTypesJSON)
 }
 
 // earliestRetryTime runs a MIN(COALESCE(retry_after, ”)) query and decodes it.

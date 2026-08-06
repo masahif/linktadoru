@@ -2,8 +2,9 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 	"time"
 
@@ -227,25 +228,18 @@ func TestEarliestRetryTimeIgnoresExhaustedRows(t *testing.T) {
 	}
 }
 
-// The SQL list is generated from the crawler's classification, so the two
-// cannot drift apart. This pins the rendered result: the dangerous direction is
-// the SQL list gaining a type the crawler does not pace, which would requeue
-// rows with a NULL retry_after and let the crawler hammer a struggling host.
-func TestRetryableErrorTypesRenderedFromCrawler(t *testing.T) {
-	const want = "('network_error', 'http_408', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504')"
-	if retryableErrorTypes != want {
-		t.Errorf("retryableErrorTypes = %s, want %s", retryableErrorTypes, want)
+// The JSON query parameter is generated from the crawler's classification, so
+// the two cannot drift apart. Passing it through json_each also avoids dynamic
+// SQL while retaining a single source of truth.
+func TestRetryableErrorTypesEncodedFromCrawler(t *testing.T) {
+	var got []string
+	if err := json.Unmarshal([]byte(retryableErrorTypesJSON), &got); err != nil {
+		t.Fatalf("retryableErrorTypesJSON is invalid: %v", err)
 	}
 
-	// Every crawler entry must be present, and the SQL list must hold nothing
-	// beyond them.
-	for _, errType := range crawler.RetryableErrorTypes() {
-		if !strings.Contains(retryableErrorTypes, "'"+errType+"'") {
-			t.Errorf("%q is retryable in the crawler but missing from the SQL list", errType)
-		}
-	}
-	if got, want := strings.Count(retryableErrorTypes, "'")/2, len(crawler.RetryableErrorTypes()); got != want {
-		t.Errorf("SQL list holds %d types, crawler reports %d", got, want)
+	want := crawler.RetryableErrorTypes()
+	if !slices.Equal(got, want) {
+		t.Errorf("retryable error types = %v, want %v", got, want)
 	}
 }
 

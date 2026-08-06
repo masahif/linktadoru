@@ -102,9 +102,10 @@ func (s *SQLiteStorage) MinUnfinishedDepth(maxRetries int) (*int, error) {
 		WHERE depth IS NOT NULL
 		  AND (
 			status = 'pending'
-			OR (status = 'error' AND retry_count < ? AND last_error_type IN `+retryableErrorTypes+`)
+			OR (status = 'error' AND retry_count < ?
+			    AND last_error_type IN (SELECT value FROM json_each(?)))
 		  )
-	`, maxRetries).Scan(&depth)
+	`, maxRetries, retryableErrorTypesJSON).Scan(&depth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum unfinished depth: %w", err)
 	}
@@ -143,8 +144,8 @@ func (s *SQLiteStorage) HasRetryablePagesAtDepth(maxRetries, depth int) (bool, e
 		WHERE status = 'error'
 		  AND depth = ?
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-	`, depth, maxRetries).Scan(&count)
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+	`, depth, maxRetries, retryableErrorTypesJSON).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check retryable pages at depth %d: %w", depth, err)
 	}
@@ -161,9 +162,9 @@ func (s *SQLiteStorage) RequeueErrorPagesAtDepth(maxRetries, depth int) (int, er
 		WHERE status = 'error'
 		  AND depth = ?
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-		  AND `+retryDueClause+`
-	`, depth, maxRetries, sqlTime(time.Now()))
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+		  AND (retry_after IS NULL OR retry_after <= ?)
+	`, depth, maxRetries, retryableErrorTypesJSON, sqlTime(time.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to requeue error pages at depth %d: %w", depth, err)
 	}
@@ -183,8 +184,8 @@ func (s *SQLiteStorage) EarliestRetryTimeAtDepth(maxRetries, depth int) (*time.T
 		WHERE status = 'error'
 		  AND depth = ?
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-	`, depth, maxRetries)
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+	`, depth, maxRetries, retryableErrorTypesJSON)
 }
 
 // HasDepthlessWork reports whether the database holds unfinished work whose
@@ -207,10 +208,11 @@ func (s *SQLiteStorage) HasDepthlessWork(maxRetries int) (bool, error) {
 			WHERE depth IS NULL
 			  AND (
 				status IN ('pending', 'processing')
-				OR (status = 'error' AND retry_count < ? AND last_error_type IN `+retryableErrorTypes+`)
+				OR (status = 'error' AND retry_count < ?
+				    AND last_error_type IN (SELECT value FROM json_each(?)))
 			  )
 		)
-	`, maxRetries).Scan(&exists)
+	`, maxRetries, retryableErrorTypesJSON).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check for work without depth: %w", err)
 	}
@@ -230,9 +232,10 @@ func (s *SQLiteStorage) HasResumableWork(maxRetries int) (bool, error) {
 		SELECT EXISTS(
 			SELECT 1 FROM pages
 			WHERE status IN ('pending', 'processing')
-			   OR (status = 'error' AND retry_count < ? AND last_error_type IN `+retryableErrorTypes+`)
+			   OR (status = 'error' AND retry_count < ?
+			       AND last_error_type IN (SELECT value FROM json_each(?)))
 		)
-	`, maxRetries).Scan(&exists)
+	`, maxRetries, retryableErrorTypesJSON).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check for resumable work: %w", err)
 	}
