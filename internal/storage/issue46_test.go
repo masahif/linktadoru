@@ -151,8 +151,8 @@ func TestAddToQueuePromotesOnlyDiscovered(t *testing.T) {
 		{
 			name: "error",
 			setup: func(t *testing.T, s *SQLiteStorage, id int) {
-				if err := s.SaveFailedAttempt(id, nil, "processing_error", "boom", time.Time{}); err != nil {
-					t.Fatalf("SaveFailedAttempt: %v", err)
+				if err := s.SavePageError(id, "processing_error", "boom"); err != nil {
+					t.Fatalf("SavePageError: %v", err)
 				}
 			},
 			expect: "error",

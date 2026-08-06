@@ -35,49 +35,9 @@ type DefaultCrawler struct {
 	// State
 	stats      CrawlStats
 	statsMutex sync.RWMutex
-	// layerDepth is the depth the current round of workers is allowed to claim
-	// from, used only by a bounded crawl. It is written between rounds, while
-	// no worker is running, and read by the workers of the round it starts.
-	layerDepth int
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup // tracks workers only (not the stats reporter)
-}
-
-// isTransientResult reports whether a result is an HTTP response the server
-// asked us to come back for, rather than an answer about the resource.
-func (c *DefaultCrawler) isTransientResult(result *PageResult) bool {
-	return result.Page != nil && result.Error != nil && isTransientStatus(result.Page.StatusCode)
-}
-
-// failAttempt records one failed attempt at a URL and schedules the next one.
-//
-// Every failure goes through here so the pacing cannot be forgotten at a call
-// site. A retryable failure — a transient HTTP status, or a transport failure
-// that produced no response at all — is given a wait: whatever the server
-// asked for via Retry-After, or a deterministic backoff when it asked for
-// nothing. Without that wait a struggling host is hit again within
-// milliseconds and the whole attempt budget is gone before it could recover,
-// which defeats the point of retrying. Failures that are never retried get the
-// zero time, meaning no wait.
-//
-// page carries the observation when there was one, and is nil when no response
-// arrived.
-func (c *DefaultCrawler) failAttempt(id int, item *URLItem, page *PageData, errorType, errorMessage string) {
-	var retryAt time.Time
-	if isRetryableErrorType(errorType) {
-		var headers map[string]string
-		if page != nil {
-			headers = page.HTTPHeaders
-		}
-		attempt := item.RetryCount + 1
-		retryAt = time.Now().Add(retryDelay(headers, attempt, defaultRetryBackoff, time.Now()))
-	}
-
-	if err := c.storage.SaveFailedAttempt(id, page, errorType, errorMessage, retryAt); err != nil {
-		slog.Error("Worker failed to record a failed attempt", "url", item.URL, "error", err)
-	}
-	c.incrementErrorCount()
 }
 
 // NewCrawler creates a new crawler instance with the provided configuration and storage.
@@ -263,14 +223,6 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
 
-	// Checked before anything is queued or fetched, so a database that cannot
-	// honour the bound is rejected rather than half-crawled.
-	if c.bounded() {
-		if err := c.requireDepthTracking(); err != nil {
-			return err
-		}
-	}
-
 	// Reset rows left in 'processing' by a previous interrupted run back to
 	// 'pending'. No workers are running yet, so every 'processing' row is stale.
 	// This both re-queues interrupted URLs and prevents a stale 'processing' row
@@ -278,35 +230,34 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	// shouldExitOnEmptyQueue from ever firing and hang every worker (issue #46
 	// review follow-up). Passing 0 treats all current 'processing' rows as stale.
 	if err := c.storage.CleanupStaleProcessing(0); err != nil {
-		if c.bounded() {
-			// Fail closed. Those stale rows belong to a depth, and the layer
-			// barrier decides what to open next from the state of the queue —
-			// if that state could not be established, a shallow layer may look
-			// finished when it is not, and the run would step past it.
-			return fmt.Errorf("failed to reset stale processing rows: %w", err)
-		}
 		slog.Error("Failed to reset stale processing rows", "error", err)
 	}
 
 	if len(seedURLs) > 0 {
 		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
-		// Every seed is queued. Limit caps how many pages are crawled, not how
-		// many starting points the run is allowed to know about; truncating the
-		// seed list here silently narrowed the crawl instead, which a long list
-		// from --seed-file makes invisible.
-		var err error
-		if c.bounded() {
-			err = c.storage.AddToQueueWithDepth(seedURLs, 0)
-		} else {
-			err = c.storage.AddToQueue(seedURLs)
+		// Step 1: Add seed URLs to queue first (before starting workers)
+		var urls []string
+		for i, seedURL := range seedURLs {
+			if c.config.Limit > 0 && i >= c.config.Limit {
+				break
+			}
+			urls = append(urls, seedURL)
 		}
+
+		err := c.storage.AddToQueue(urls)
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
 		}
-		slog.Info("Added seed URLs to queue", "count", len(seedURLs))
+		slog.Info("Added seed URLs to queue", "count", len(urls))
 	} else {
 		slog.Info("Starting crawler - resuming from existing queue")
+	}
+
+	// Step 2: Start workers after queue is populated
+	for i := 0; i < c.config.Concurrency; i++ {
+		c.wg.Add(1)
+		go c.worker(i)
 	}
 
 	// The stats reporter lives outside the worker WaitGroup: it only exits on
@@ -321,133 +272,76 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 		c.statsReporter()
 	}()
 
-	var runErr error
-	if c.strictLayers() {
-		runErr = c.runBoundedCrawl()
-	} else {
-		// Both the unbounded crawl and max_depth 1 come through here, differing
-		// only in which rows a worker may claim (see nextQueueItem).
-		//
-		// Always wait for the workers themselves. On external cancellation they
-		// exit promptly (in-flight requests carry c.ctx), and waiting here is what
-		// makes shutdown graceful: Start does not return while a worker may still
-		// be writing to the database.
-		c.runWorkers()
+	// Always wait for the workers themselves. On external cancellation they
+	// exit promptly (in-flight requests carry c.ctx), and waiting here is what
+	// makes shutdown graceful: Start does not return while a worker may still
+	// be writing to the database.
+	c.wg.Wait()
 
-		if c.ctx.Err() != nil {
-			slog.Info("Crawling cancelled")
-		} else {
-			slog.Info("Crawling completed - checking for retries")
-			if err := c.performRetries(); err != nil {
-				slog.Error("Error during retry processing", "error", err)
-			}
+	if c.ctx.Err() != nil {
+		slog.Info("Crawling cancelled")
+	} else {
+		slog.Info("Crawling completed - checking for retries")
+		if err := c.performRetries(); err != nil {
+			slog.Error("Error during retry processing", "error", err)
 		}
 	}
-
-	// Report before the reporter is stopped, and before returning either way:
-	// a run that ended badly is exactly when the breakdown matters.
-	c.logRunSummary()
 
 	// Stop the stats reporter and wait for it before returning.
 	c.cancel()
 	<-statsDone
 
-	return runErr
+	return nil
 }
 
-// logRunSummary reports what became of every URL the run touched.
-//
-// The categories are kept apart on purpose. A page the server answered
-// transiently until the retries ran out is unavailable — we do not know its
-// current state — and that is a different fact from a page that returned 404,
-// which is a real observation. A summary that merged them would let a snapshot
-// comparison report an outage as a deletion.
-func (c *DefaultCrawler) logRunSummary() {
-	summary, err := c.storage.GetRunSummary()
-	if err != nil {
-		slog.Error("Failed to summarise the run", "error", err)
-		return
-	}
-
-	slog.Info("Run summary",
-		"completed", summary.Completed,
-		"unavailable", summary.Unavailable,
-		"unreachable", summary.Unreachable,
-		"skipped", summary.Skipped,
-		"unfinished", summary.Unfinished,
-		"discovered_not_crawled", summary.Discovered)
-
-	if summary.Unavailable > 0 || summary.Unreachable > 0 {
-		slog.Warn("Some URLs could not be fetched - their current state is unknown, not absent",
-			"unavailable", summary.Unavailable, "unreachable", summary.Unreachable)
-	}
-}
-
-// performRetries retries failed pages once the normal queue has drained.
-//
-// It loops until nothing is retryable, rather than making a single pass. The
-// attempt budget is MaxRetries per URL across the whole crawl of a database —
-// retry_count is persisted, so a run cancelled mid-budget hands the remainder
-// to the resume rather than starting over. What the loop changes is that an
-// uninterrupted run spends the budget before returning instead of leaving
-// attempts unmade: with a database created fresh per crawl there is no later
-// run to spend them, and the transient failure they would have recovered from
-// becomes indistinguishable from a page that is genuinely gone. Honouring a
-// Retry-After also needs a next pass to happen at all.
+// performRetries handles retry logic for error status pages
 func (c *DefaultCrawler) performRetries() error {
-	const maxRetries = MaxRetries
+	const maxRetries = 3
 
-	for {
-		if c.ctx.Err() != nil {
-			return nil
-		}
+	retryablePages, err := c.storage.GetRetryablePages(maxRetries)
+	if err != nil {
+		return fmt.Errorf("failed to get retryable pages: %w", err)
+	}
 
-		due, err := c.storage.EarliestRetryTime(maxRetries)
-		if err != nil {
-			return fmt.Errorf("failed to find pages for retry: %w", err)
-		}
-		if due == nil {
-			slog.Info("No pages available for retry")
-			return nil
-		}
-		if !c.waitUntil(*due) {
-			return nil // cancelled while waiting
-		}
+	if len(retryablePages) == 0 {
+		slog.Info("No pages available for retry")
+		return nil
+	}
 
-		requeued, err := c.storage.RequeueErrorPages(maxRetries)
-		if err != nil {
-			return fmt.Errorf("failed to requeue error pages: %w", err)
-		}
-		if requeued == 0 {
-			// The wait above means the rows were due, so a requeue that moves
-			// nothing is a real disagreement between the two queries rather
-			// than a timing artefact. Looping would spin.
-			return fmt.Errorf("pages are reported as retryable but none could be requeued; refusing to continue")
-		}
+	slog.Info("Found pages for retry", "count", len(retryablePages))
 
+	// Requeue error pages back to pending status
+	requeued, err := c.storage.RequeueErrorPages(maxRetries)
+	if err != nil {
+		return fmt.Errorf("failed to requeue error pages: %w", err)
+	}
+
+	if requeued > 0 {
 		slog.Info("Requeued error pages for retry", "count", requeued)
-		c.runWorkers()
-	}
-}
 
-// waitUntil blocks until t, returning false if the run is cancelled first.
-// A time in the past returns immediately.
-func (c *DefaultCrawler) waitUntil(t time.Time) bool {
-	wait := time.Until(t)
-	if wait <= 0 {
-		return c.ctx.Err() == nil
+		// Check if we have items to process after requeueing
+		hasItems, err := c.storage.HasQueuedItems()
+		if err != nil {
+			return fmt.Errorf("failed to check queued items: %w", err)
+		}
+
+		if hasItems {
+			slog.Info("Starting retry processing")
+			// Start workers again for retry processing. c.wg is empty here
+			// (Start waited for all workers before calling us) and c.ctx is
+			// still live, so the retry workers actually run.
+			for i := 0; i < c.config.Concurrency; i++ {
+				c.wg.Add(1)
+				go c.worker(i)
+			}
+
+			// Wait for retry completion
+			c.wg.Wait()
+			slog.Info("Retry processing completed")
+		}
 	}
 
-	slog.Info("Waiting before the next retry attempt", "wait", wait)
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-
-	select {
-	case <-c.ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
+	return nil
 }
 
 // Stop stops the crawling process
@@ -489,7 +383,7 @@ func (c *DefaultCrawler) worker(id int) {
 				return
 			}
 
-			item, err := c.nextQueueItem()
+			item, err := c.storage.GetNextFromQueue()
 			if err != nil {
 				slog.Error("Worker failed to get from queue", "worker_id", id, "error", err)
 				c.workerSleep()
@@ -532,40 +426,12 @@ func (c *DefaultCrawler) shouldStopWorker(id int) bool {
 // 'discovered' rows must terminate instead of spinning forever — and a run whose
 // seeds all errored (PagesCrawled == 0) must end rather than hang.
 func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
-	var (
-		hasItems bool
-		err      error
-	)
-	if c.strictLayers() {
-		// Scoped to the current layer: work waiting at a deeper layer is not
-		// this round's to do, and treating it as "still busy" would keep the
-		// workers alive past the barrier.
-		hasItems, err = c.storage.HasQueuedItemsAtDepth(c.layerDepth)
-	} else {
-		hasItems, err = c.storage.HasQueuedItems()
-	}
+	hasItems, err := c.storage.HasQueuedItems()
 	if err != nil {
 		slog.Error("Worker failed to check queued items", "error", err)
 		return false
 	}
 	return !hasItems
-}
-
-// nextQueueItem claims the next URL a worker should process. The three
-// scheduling modes differ here and almost nowhere else.
-func (c *DefaultCrawler) nextQueueItem() (*URLItem, error) {
-	switch {
-	case c.strictLayers():
-		// Only the layer currently open. This is what the barrier is.
-		return c.storage.GetNextFromQueueAtDepth(c.layerDepth)
-	case c.bounded():
-		// max_depth 1: shallowest pending row first, but nothing is off limits.
-		// A depth-0 row still being fetched is not a reason to leave a worker
-		// idle when depth-1 rows are ready to go.
-		return c.storage.GetNextFromQueueByDepthPriority()
-	default:
-		return c.storage.GetNextFromQueue()
-	}
 }
 
 // workerSleep applies the configured delay between requests
@@ -589,7 +455,10 @@ func (c *DefaultCrawler) processURLItem(id int, item *URLItem) {
 		// cancellation we leave the row alone — the run is ending and a later
 		// resume's CleanupStaleProcessing resets it back to 'pending'.
 		if c.ctx.Err() == nil {
-			c.failAttempt(item.ID, item, nil, "rate_limit_error", err.Error())
+			if serr := c.storage.SavePageError(item.ID, "rate_limit_error", err.Error()); serr != nil {
+				slog.Error("Worker failed to mark rate-limit error", "worker_id", id, "url", item.URL, "error", serr)
+			}
+			c.incrementErrorCount()
 		}
 		return
 	}
@@ -654,7 +523,10 @@ func (c *DefaultCrawler) shouldProcessURL(id int, item *URLItem) bool {
 // handleProcessingError handles errors during page processing
 func (c *DefaultCrawler) handleProcessingError(id int, item *URLItem, err error) {
 	slog.Error("Worker failed to process URL", "worker_id", id, "url", item.URL, "error", err)
-	c.failAttempt(item.ID, item, nil, "processing_error", err.Error())
+	if saveErr := c.storage.SavePageError(item.ID, "processing_error", err.Error()); saveErr != nil {
+		slog.Error("Worker failed to save processing error", "worker_id", id, "error", saveErr)
+	}
+	c.incrementErrorCount()
 	c.workerSleep()
 }
 
@@ -668,14 +540,6 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 		return
 	}
 
-	// The same reasoning covers a transient response that arrives as the run is
-	// being cancelled: it would consume a retry credit for a failure the run
-	// never really got to judge. Page != nil here, so the guard above misses it.
-	transient := c.isTransientResult(result)
-	if transient && c.ctx.Err() != nil {
-		return
-	}
-
 	// Save links and queue newly discovered URLs BEFORE marking this page
 	// completed. While this runs, item.ID is still 'processing', so
 	// HasQueuedItems() stays true across the whole window — an idle sibling
@@ -686,32 +550,16 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 	if err := c.storage.SaveLinks(result.Links); err != nil {
 		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
 	}
-	c.processNewURLs(id, result.Links, item)
+	c.processNewURLs(id, result.Links, item.URL)
 
-	// Move this page out of 'processing'.
-	switch {
-	case transient:
-		// The response is kept — status code, headers, timing — but the row
-		// stays retryable rather than becoming a completed observation. A 503
-		// recorded as 'completed' would both go unretried and, because nothing
-		// was parsed from it, silently drop everything that page links to.
-		c.failAttempt(item.ID, item, result.Page, result.Error.ErrorType, result.Error.ErrorMessage)
-		// Deliberately not "will retry": on the last attempt of the budget
-		// there is no retry to come, and the log would be promising something
-		// the run never does.
-		slog.Info("Transient response recorded",
-			"worker_id", id, "url", item.URL,
-			"status", result.Page.StatusCode,
-			"attempt", item.RetryCount+1, "max_attempts", MaxRetries)
-
-	case result.Page != nil:
+	// Move this page out of 'processing' to a terminal state.
+	if result.Page != nil {
 		if err := c.storage.SavePageResult(item.ID, result.Page); err != nil {
 			slog.Error("Worker failed to save page", "worker_id", id, "url", item.URL, "error", err)
 		} else {
 			c.incrementCrawledCount()
 		}
-
-	default:
+	} else {
 		// No page was produced — e.g. a transport/network failure that the
 		// processor encodes in result.Error (Page == nil, no Go error, so it
 		// lands here rather than in handleProcessingError). Mark the row 'error'
@@ -722,18 +570,14 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 		if result.Error != nil {
 			errType, errMsg = result.Error.ErrorType, result.Error.ErrorMessage
 		}
-		// network_error lands here, and it is paced like a transient HTTP
-		// status: a host that times out will time out again immediately, so
-		// retrying without a wait spends the budget without giving it a chance
-		// to recover.
-		c.failAttempt(item.ID, item, nil, errType, errMsg)
+		if err := c.storage.SavePageError(item.ID, errType, errMsg); err != nil {
+			slog.Error("Worker failed to mark page error", "worker_id", id, "url", item.URL, "error", err)
+		}
+		c.incrementErrorCount()
 	}
 
 	// Save error details to the crawl_errors table (separate from the pages row).
-	// One row per attempt, so a URL that recovers on its third try still shows
-	// what the first two saw.
 	if result.Error != nil {
-		result.Error.Attempt = item.RetryCount + 1
 		if err := c.storage.SaveError(result.Error); err != nil {
 			slog.Error("Worker failed to save error", "worker_id", id, "url", item.URL, "error", err)
 		}
@@ -746,18 +590,8 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 	c.workerSleep()
 }
 
-// processNewURLs collects and queues new URLs from links.
-//
-// In a bounded crawl the children of the page just crawled sit one hop further
-// out. Children past the bound are not queued, but SaveLinks has already
-// recorded them, so the link graph still shows the frontier the crawl stopped
-// at — the bound limits what is fetched, not what is known.
-func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, parent *URLItem) {
-	childDepth := parent.Depth + 1
-	if c.bounded() && childDepth > c.config.MaxDepth {
-		return
-	}
-
+// processNewURLs collects and queues new URLs from links
+func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
 	var newURLs []string
 	for _, link := range links {
 		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {
@@ -773,13 +607,7 @@ func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, parent *URLIt
 	}
 
 	if len(newURLs) > 0 {
-		var err error
-		if c.bounded() {
-			err = c.storage.AddToQueueWithDepth(newURLs, childDepth)
-		} else {
-			err = c.storage.AddToQueue(newURLs)
-		}
-		if err != nil {
+		if err := c.storage.AddToQueue(newURLs); err != nil {
 			slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
 		}
 	}

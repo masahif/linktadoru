@@ -9,6 +9,4 @@ var (
 	ErrInvalidTimeout = errors.New("request_timeout must be greater than 0")
 	// ErrEmptyDatabasePath is returned when database path is empty
 	ErrEmptyDatabasePath = errors.New("database_path cannot be empty")
-	// ErrInvalidMaxDepth is returned when max_depth is negative
-	ErrInvalidMaxDepth = errors.New("max_depth cannot be negative (0 = unlimited)")
 )
