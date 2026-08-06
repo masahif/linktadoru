@@ -13,6 +13,8 @@ func (unboundedOnlyStorage) AddToQueueWithDepth(_ []string, _ int) error { retur
 
 func (unboundedOnlyStorage) GetNextFromQueueAtDepth(_ int) (*URLItem, error) { return nil, nil }
 
+func (unboundedOnlyStorage) GetNextFromQueueByDepthPriority() (*URLItem, error) { return nil, nil }
+
 func (unboundedOnlyStorage) MinUnfinishedDepth(_ int) (*int, error) { return nil, nil }
 
 func (unboundedOnlyStorage) HasQueuedItemsAtDepth(_ int) (bool, error) { return false, nil }

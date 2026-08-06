@@ -68,6 +68,20 @@ budget — the run stops once the page count is spent, so the later seeds can st
 end up incompletely crawled. Links beyond the bound are still recorded for link
 analysis, they are just not fetched.
 
+How the crawl is scheduled depends on the bound:
+
+| Setting | Scheduling |
+|---|---|
+| `--max-depth 0` (default) | Asynchronous; no depth is recorded |
+| `--max-depth 1` | Asynchronous, shallowest-first; retries after the queue drains |
+| `--max-depth 2` and above | One depth layer at a time; retries within each layer |
+
+At `--max-depth 1` the crawler prefers seeds over their links but never waits on
+one, so a slow seed holds up only its own worker. From `--max-depth 2` each
+depth is finished before the next begins — a page reached later by a shorter
+route would change whether its own links fall inside the bound — which does mean
+one slow page holds up its whole layer.
+
 `--max-depth` cannot be used on a database that still has unfinished pages from
 an unbounded run — queued URLs, or failures that still have retries left: use a
 new database file, or finish that work without `--max-depth` first. See

@@ -56,6 +56,9 @@ type Storage interface {
 	// crawl keeps its original, depth-unaware path.
 	AddToQueueWithDepth(urls []string, depth int) error
 	GetNextFromQueueAtDepth(depth int) (*URLItem, error)
+	// GetNextFromQueueByDepthPriority is the max_depth 1 claim: shallowest
+	// pending row first, without waiting on anything still in flight.
+	GetNextFromQueueByDepthPriority() (*URLItem, error)
 	MinUnfinishedDepth(maxRetries int) (*int, error)
 	HasQueuedItemsAtDepth(depth int) (bool, error)
 	HasRetryablePagesAtDepth(maxRetries, depth int) (bool, error)

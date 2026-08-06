@@ -557,13 +557,21 @@ func TestMaxDepthStopsAtLimitAndKeepsQueue(t *testing.T) {
 	}
 }
 
-// Resuming must finish a shallow layer's retries before opening a deeper one.
+// Resuming a layered crawl must finish a shallow layer's retries before opening
+// a deeper one.
 //
 // A run that is cancelled — or stopped by the page limit — can leave a depth-0
 // page in 'error' with retries to spare while a depth-1 page is already queued.
 // Choosing the next layer by pending work alone would pick depth 1, crawl and
 // expand it, and only then come back to the depth-0 failure, which is exactly
 // the ordering the barrier exists to prevent.
+//
+// This is a max_depth 2 test on purpose. The ordering it fixes is a property of
+// the barrier, and max_depth 1 does not have one: there, retries run after the
+// normal queue drains, so a depth-1 page may well be fetched before a depth-0
+// retry. Nothing is lost by that — depth-1 pages are never expanded, so the
+// fetched set is the same either way — and
+// TestMaxDepthOneDeferredRetryDrainsNewChildren covers the outcome.
 func TestMaxDepthResumeFinishesShallowRetriesFirst(t *testing.T) {
 	graph := map[string][]string{
 		"/shallow": {},
@@ -597,7 +605,7 @@ func TestMaxDepthResumeFinishesShallowRetriesFirst(t *testing.T) {
 	}
 
 	cfg := &config.CrawlConfig{
-		MaxDepth:        1,
+		MaxDepth:        2,
 		Concurrency:     1,
 		RequestDelay:    0.1,
 		RequestTimeout:  5 * time.Second,

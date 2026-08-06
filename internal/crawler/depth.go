@@ -25,6 +25,19 @@ func (c *DefaultCrawler) bounded() bool {
 	return c.config.MaxDepth > 0
 }
 
+// strictLayers reports whether this run needs the depth-layer barrier, as
+// distinct from merely tracking depth.
+//
+// The barrier exists because a page reached later by a shorter path can change
+// whether its children fall inside the bound. At max_depth 1 there are no such
+// children — depth-1 pages are never expanded — so the fetched set and the
+// recorded depths are the same with or without it, and waiting only lets one
+// slow seed idle every other worker. From max_depth 2 the argument stops
+// holding.
+func (c *DefaultCrawler) strictLayers() bool {
+	return c.config.MaxDepth >= 2
+}
+
 // requireDepthTracking refuses to start a bounded crawl against a queue whose
 // depths were never recorded.
 //
