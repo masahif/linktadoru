@@ -1,6 +1,8 @@
 package crawler
 
 import (
+	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -9,6 +11,16 @@ import (
 
 // MockStorage implements Storage interface for testing
 type MockStorage struct{}
+
+type seedRecordingStorage struct {
+	MockStorage
+	queued []string
+}
+
+func (s *seedRecordingStorage) AddToQueue(urls []string) error {
+	s.queued = append(s.queued, urls...)
+	return nil
+}
 
 func (m *MockStorage) SaveLink(link *LinkData) error {
 	return nil
@@ -117,6 +129,33 @@ func TestLimit(t *testing.T) {
 	}
 
 	t.Logf("Limit configuration test passed: limit=%d", crawler.config.Limit)
+}
+
+func TestLimitDoesNotDiscardExplicitSeeds(t *testing.T) {
+	seeds := []string{
+		"https://a.example",
+		"https://b.example",
+		"https://c.example",
+	}
+	cfg := config.DefaultConfig()
+	cfg.SeedURLs = seeds
+	cfg.Limit = 1
+	cfg.Concurrency = 1
+	cfg.IgnoreRobotsTxt = true
+
+	store := &seedRecordingStorage{}
+	c, err := NewCrawler(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Stop() })
+
+	if err := c.Start(context.Background(), seeds); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(store.queued, seeds) {
+		t.Fatalf("queued seeds = %q, want all explicit seeds %q", store.queued, seeds)
+	}
 }
 
 func TestLimitLogic(t *testing.T) {

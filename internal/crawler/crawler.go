@@ -256,19 +256,11 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
 		// Step 1: Add seed URLs to queue first (before starting workers)
-		var urls []string
-		for i, seedURL := range seedURLs {
-			if c.config.Limit > 0 && i >= c.config.Limit {
-				break
-			}
-			urls = append(urls, seedURL)
-		}
-
-		err := c.storage.AddToQueue(urls)
+		err := c.storage.AddToQueue(seedURLs)
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
 		}
-		slog.Info("Added seed URLs to queue", "count", len(urls))
+		slog.Info("Added seed URLs to queue", "count", len(seedURLs))
 	} else {
 		slog.Info("Starting crawler - resuming from existing queue")
 	}
