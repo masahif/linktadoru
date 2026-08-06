@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-06
+
+### Added
+- `--seed-file` accepts seed URLs from a file, or from standard input with `-`.
+  Blank lines and `#` comments are ignored. Either explicit CLI form replaces
+  configured `seed_urls`; file and positional input are intentionally mutually
+  exclusive.
+- `max_depth` / `--max-depth` bounds a crawl by link distance from the supplied
+  seeds. Seeds are depth 0, depth N is included, and 0 remains unlimited. Links
+  beyond the bound stay in the link graph without being fetched.
+- The final crawl summary distinguishes completed, unavailable, unreachable,
+  skipped, unfinished, and graph-only discovered pages.
+
+### Changed
+- `max_depth=1` now schedules ready depth-1 pages without waiting for every
+  in-flight seed, so one slow landing page occupies only its own worker. Deeper
+  bounded crawls retain strict depth layers to keep shortest-path bounds correct.
+- HTTP 408, 429, 500, 502, 503, and 504 responses are retried up to the existing
+  three-attempt limit. `Retry-After` is honored with a 60-second cap, other
+  retries use deterministic backoff, and the observed status, headers, timing,
+  and size remain available for inspection. Exhausted transient responses stay
+  errors rather than being reported as successfully crawled pages. Retryable
+  work is drained within the run and recognized when resuming the same database.
+
 ## [0.9.2] - 2026-08-05
 
 ### Security
