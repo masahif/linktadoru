@@ -11,7 +11,7 @@ import (
 // readSeedURLs reads one URL per line. Blank lines and comments are ignored;
 // "-" uses stdin so generated lists never need to pass through argv.
 func readSeedURLs(path string, stdin io.Reader) ([]string, error) {
-	var r io.Reader = stdin
+	r := stdin
 	if path != "-" {
 		f, err := os.Open(path) // #nosec G304 -- the operator explicitly supplies this path
 		if err != nil {
