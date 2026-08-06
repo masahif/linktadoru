@@ -119,11 +119,11 @@ func TestTransientSeedRecoversAndQueuesItsLinks(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body><a href="/child">child</a></body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body><a href="/child">child</a></body></html>`)
 	})
 	mux.HandleFunc("/child", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body>child</body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body>child</body></html>`)
 	})
 
 	db, base := runTransientCrawl(t, transientCfg(), mux, "/")
@@ -291,7 +291,7 @@ func TestRetryReappliesRedirectHostPolicy(t *testing.T) {
 	var foreignHits atomic.Int32
 	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		foreignHits.Add(1)
-		fmt.Fprint(w, "should never be fetched")
+		_, _ = fmt.Fprint(w, "should never be fetched")
 	}))
 	defer foreign.Close()
 
@@ -337,12 +337,12 @@ func TestTransientRetryRunsInsideTheLayer(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body><a href="/child">child</a></body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body><a href="/child">child</a></body></html>`)
 	})
 	mux.HandleFunc("/child", func(w http.ResponseWriter, r *http.Request) {
 		childSeen.Store(true)
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body><a href="/grandchild">gc</a></body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body><a href="/grandchild">gc</a></body></html>`)
 	})
 	mux.HandleFunc("/grandchild", func(w http.ResponseWriter, r *http.Request) {
 		t.Error("grandchild fetched: max_depth=1 must not reach depth 2")
