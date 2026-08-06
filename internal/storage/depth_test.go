@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/masahif/linktadoru/internal/crawler"
 )
@@ -264,7 +265,7 @@ func TestMinUnfinishedDepthIncludesRetryableErrors(t *testing.T) {
 	if err != nil || item == nil {
 		t.Fatalf("claim failed: (%v, %v)", item, err)
 	}
-	if err := store.SavePageError(item.ID, "network_error", "boom"); err != nil {
+	if err := store.SaveFailedAttempt(item.ID, nil, "network_error", "boom", time.Time{}); err != nil {
 		t.Fatalf("failed to record error: %v", err)
 	}
 
@@ -303,7 +304,7 @@ func TestHasDepthlessWorkIncludesRetryableErrors(t *testing.T) {
 	if err != nil || item == nil {
 		t.Fatalf("claim failed: (%v, %v)", item, err)
 	}
-	if err := store.SavePageError(item.ID, "network_error", "boom"); err != nil {
+	if err := store.SaveFailedAttempt(item.ID, nil, "network_error", "boom", time.Time{}); err != nil {
 		t.Fatalf("failed to record error: %v", err)
 	}
 

@@ -59,8 +59,8 @@ func TestSQLiteStorage(t *testing.T) {
 		testQueueStatusTracking(t)
 	})
 
-	t.Run("SavePageError", func(t *testing.T) {
-		testSavePageError(t)
+	t.Run("SaveFailedAttempt", func(t *testing.T) {
+		testSaveFailedAttempt(t)
 	})
 
 	t.Run("SaveLinks", func(t *testing.T) {
@@ -432,8 +432,8 @@ func testQueueStatusTracking(t *testing.T) {
 	}
 }
 
-func testSavePageError(t *testing.T) {
-	// Test SavePageError function
+func testSaveFailedAttempt(t *testing.T) {
+	// Test SaveFailedAttempt function
 	errorStorage, err := NewSQLiteStorage(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create error storage: %v", err)
@@ -462,7 +462,7 @@ func testSavePageError(t *testing.T) {
 	}
 
 	// Save page error
-	err = errorStorage.SavePageError(item.ID, "network_error", "Connection timeout")
+	err = errorStorage.SaveFailedAttempt(item.ID, nil, "network_error", "Connection timeout", time.Time{})
 	if err != nil {
 		t.Errorf("Failed to save page error: %v", err)
 	}

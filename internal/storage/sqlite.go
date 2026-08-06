@@ -83,9 +83,15 @@ func (s *SQLiteStorage) InitSchema() error {
 	}
 
 	// Order matters: the rebuild above copies a fixed column list that predates
-	// 'depth', so the column has to be added after it, not before.
+	// both of these, so they have to be added after it, not before.
 	if err := s.migratePagesAddDepth(); err != nil {
 		return fmt.Errorf("failed to migrate pages table: %w", err)
+	}
+	if err := s.migratePagesAddRetryAfter(); err != nil {
+		return fmt.Errorf("failed to migrate pages table: %w", err)
+	}
+	if err := s.migrateCrawlErrorsAddAttemptDetail(); err != nil {
+		return fmt.Errorf("failed to migrate crawl_errors table: %w", err)
 	}
 
 	// Create schema (idempotent). After a migration this also recreates the
@@ -162,16 +168,16 @@ func (s *SQLiteStorage) GetNextFromQueue() (*crawler.URLItem, error) {
 	var item crawler.URLItem
 
 	err := s.db.QueryRow(`
-		UPDATE pages 
-		SET status = 'processing', processing_started_at = ? 
+		UPDATE pages
+		SET status = 'processing', processing_started_at = ?
 		WHERE id = (
-			SELECT id FROM pages 
-			WHERE status = 'pending' 
-			ORDER BY added_at ASC 
+			SELECT id FROM pages
+			WHERE status = 'pending'
+			ORDER BY added_at ASC
 			LIMIT 1
 		) AND status = 'pending'
-		RETURNING id, url
-	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL)
+		RETURNING id, url, retry_count
+	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL, &item.RetryCount)
 
 	if err == sql.ErrNoRows {
 		return nil, nil // No items in queue
@@ -245,19 +251,90 @@ func (s *SQLiteStorage) SavePageResult(id int, page *crawler.PageData) error {
 	return nil
 }
 
-// SavePageError marks a page as errored with error details
-func (s *SQLiteStorage) SavePageError(id int, errorType, errorMessage string) error {
-	_, err := s.db.Exec(`
-		UPDATE pages SET 
+// SaveFailedAttempt records one failed attempt at a URL: the observation when
+// there was one, and the pacing for the next attempt.
+//
+// This is the single path for every failure, deliberately. Retry pacing has to
+// be written by whoever fails the row — a second, unpaced way to fail a row is
+// a way to forget, and a retryable failure left with no retry_after retries
+// immediately, spending the whole budget against a struggling host in
+// milliseconds.
+//
+// page is the observed response, or nil when no response arrived at all. When
+// it is present, everything SavePageResult would record about it is written —
+// status code, headers, timing, size — while the row still lands in 'error' so
+// the retry machinery keeps it. That is the point of the method: deciding to
+// retry must not cost us the evidence for the decision. A reader can then tell
+// "the server responded 503" (error with a status code) from "we never reached
+// the server" (error with none).
+//
+// retryAfter is the earliest time the row may be attempted again; the zero time
+// means no wait, which is the right value for a failure that will not be
+// retried at all. retry_count is always incremented, and the retry loops depend
+// on that: it is the only thing that eventually pushes a permanently failing
+// URL past maxRetries instead of round-tripping forever.
+func (s *SQLiteStorage) SaveFailedAttempt(id int, page *crawler.PageData, errorType, errorMessage string, retryAfter time.Time) error {
+	var retryAfterValue interface{}
+	if !retryAfter.IsZero() {
+		retryAfterValue = sqlTime(retryAfter)
+	}
+
+	if page == nil {
+		// No response arrived, so status_code stays NULL — that is what
+		// distinguishes unreachable from unavailable.
+		_, err := s.db.Exec(`
+			UPDATE pages SET
+				status = 'error',
+				last_error_type = ?,
+				last_error_message = ?,
+				retry_count = retry_count + 1,
+				retry_after = ?
+			WHERE id = ?
+		`, errorType, errorMessage, retryAfterValue, id)
+		if err != nil {
+			return fmt.Errorf("failed to save page error: %w", err)
+		}
+		return nil
+	}
+
+	var headersJSON []byte
+	var err error
+	if page.HTTPHeaders != nil {
+		headersJSON, err = json.Marshal(page.HTTPHeaders)
+		if err != nil {
+			return fmt.Errorf("failed to marshal HTTP headers: %w", err)
+		}
+	}
+
+	_, err = s.db.Exec(`
+		UPDATE pages SET
 			status = 'error',
+			status_code = ?,
+			ttfb_ms = ?,
+			download_time_ms = ?,
+			response_size_bytes = ?,
+			response_http_headers = ?,
+			crawled_at = ?,
 			last_error_type = ?,
 			last_error_message = ?,
-			retry_count = retry_count + 1
+			retry_count = retry_count + 1,
+			retry_after = ?
 		WHERE id = ?
-	`, errorType, errorMessage, id)
+	`,
+		page.StatusCode,
+		page.TTFB.Milliseconds(),
+		page.DownloadTime.Milliseconds(),
+		page.ResponseSize,
+		string(headersJSON),
+		sqlTime(page.CrawledAt),
+		errorType,
+		errorMessage,
+		retryAfterValue,
+		id,
+	)
 
 	if err != nil {
-		return fmt.Errorf("failed to save page error: %w", err)
+		return fmt.Errorf("failed to save transient page response: %w", err)
 	}
 	return nil
 }
@@ -436,14 +513,27 @@ func (s *SQLiteStorage) saveLinksBatch(links []*crawler.LinkData) error {
 func (s *SQLiteStorage) SaveError(crawlErr *crawler.CrawlError) error {
 	query := `
 		INSERT INTO crawl_errors (
-			url, error_type, error_message, occurred_at
-		) VALUES (?, ?, ?, ?)
+			url, error_type, error_message, status_code, attempt, occurred_at
+		) VALUES (?, ?, ?, ?, ?, ?)
 	`
+
+	// A zero status code means no response arrived; store NULL so the column
+	// reads as "unknown" rather than as an HTTP status of 0.
+	var statusCode interface{}
+	if crawlErr.StatusCode != 0 {
+		statusCode = crawlErr.StatusCode
+	}
+	var attempt interface{}
+	if crawlErr.Attempt != 0 {
+		attempt = crawlErr.Attempt
+	}
 
 	_, err := s.db.Exec(query,
 		crawlErr.URL,
 		crawlErr.ErrorType,
 		crawlErr.ErrorMessage,
+		statusCode,
+		attempt,
 		sqlTime(crawlErr.OccurredAt),
 	)
 
@@ -488,14 +578,31 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	return count > 0, nil
 }
 
-// retryableErrorTypes lists the last_error_type values eligible for retry.
-// These MUST match the strings the crawler actually writes via SavePageError:
-// 'network_error' (transient transport failure, see page_processor.go) is
-// worth retrying. Deliberately excluded: 'processing_error' and
-// 'rate_limit_error' (malformed URLs — retrying reproduces the same failure)
-// and 'response_too_large' (deterministic — the page will exceed the limit
-// again).
-const retryableErrorTypes = `('network_error')`
+// retryableErrorTypesJSON is the JSON array of last_error_type values eligible
+// for retry: 'network_error' (a transport failure that never produced a
+// response) and the 'http_NNN' values for the transient statuses.
+//
+// Queries pass this value to SQLite's json_each table-valued function instead
+// of interpolating an IN list into SQL. That keeps the crawler and storage
+// classifications single-sourced without introducing dynamic SQL.
+//
+// Deliberately excluded: 'processing_error' and 'rate_limit_error' (malformed
+// URLs — retrying reproduces the same failure), 'response_too_large'
+// (deterministic — the page will exceed the limit again), and every other HTTP
+// status. A 403, 404 or 410 is a real answer about the resource, and retrying
+// it would turn a legitimate deletion signal into an unavailable row.
+var retryableErrorTypesJSON = buildRetryableErrorTypesJSON()
+
+// buildRetryableErrorTypesJSON serializes a []string, which cannot fail for
+// any value returned by the crawler. Panic keeps an impossible initialization
+// failure from silently disabling retries.
+func buildRetryableErrorTypesJSON() string {
+	encoded, err := json.Marshal(crawler.RetryableErrorTypes())
+	if err != nil {
+		panic(fmt.Sprintf("failed to encode retryable error types: %v", err))
+	}
+	return string(encoded)
+}
 
 // GetRetryablePages returns pages with error status that can be retried
 func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
@@ -504,9 +611,9 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 		FROM pages
 		WHERE status = 'error'
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
+		  AND last_error_type IN (SELECT value FROM json_each(?))
 		ORDER BY retry_count ASC, added_at ASC
-	`, maxRetries)
+	`, maxRetries, retryableErrorTypesJSON)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get retryable pages: %w", err)
 	}
@@ -530,15 +637,18 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 	return items, nil
 }
 
-// RequeueErrorPages moves error status pages back to pending for retry
+// RequeueErrorPages moves error status pages back to pending for retry.
+// Rows whose retry_after has not arrived yet are left alone; the caller is
+// expected to have waited for them (see EarliestRetryTime).
 func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	result, err := s.db.Exec(`
 		UPDATE pages
 		SET status = 'pending', processing_started_at = NULL
 		WHERE status = 'error'
 		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-	`, maxRetries)
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+		  AND (retry_after IS NULL OR retry_after <= ?)
+	`, maxRetries, retryableErrorTypesJSON, sqlTime(time.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to requeue error pages: %w", err)
 	}
@@ -549,6 +659,49 @@ func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	}
 
 	return int(rowsAffected), nil
+}
+
+// EarliestRetryTime reports when the next retryable page becomes due, or nil
+// when nothing is retryable at all.
+//
+// The retry loops drive off this single query rather than pairing a
+// "has retryable work" check with a requeue that might move nothing: those two
+// can legitimately disagree while a row waits out its Retry-After, and treating
+// that disagreement as a fault would kill the run over correct behaviour. A
+// NULL retry_after is reported as due now.
+func (s *SQLiteStorage) EarliestRetryTime(maxRetries int) (*time.Time, error) {
+	return s.earliestRetryTime(`
+		SELECT MIN(COALESCE(retry_after, '')) FROM pages
+		WHERE status = 'error'
+		  AND retry_count < ?
+		  AND last_error_type IN (SELECT value FROM json_each(?))
+	`, maxRetries, retryableErrorTypesJSON)
+}
+
+// earliestRetryTime runs a MIN(COALESCE(retry_after, ”)) query and decodes it.
+// The empty string sorts before every stored timestamp, so a single due-now row
+// wins the MIN over any number of waiting ones.
+func (s *SQLiteStorage) earliestRetryTime(query string, args ...interface{}) (*time.Time, error) {
+	var raw sql.NullString
+	if err := s.db.QueryRow(query, args...).Scan(&raw); err != nil {
+		return nil, fmt.Errorf("failed to find the earliest retry time: %w", err)
+	}
+	if !raw.Valid {
+		return nil, nil // nothing retryable
+	}
+	if raw.String == "" {
+		now := time.Now()
+		return &now, nil // at least one row carries no wait
+	}
+
+	t, err := time.Parse(sqlTimeFormat, raw.String)
+	if err != nil {
+		// An unreadable timestamp must not park the crawl forever; treat it as
+		// due now, which is what a missing value already means.
+		now := time.Now()
+		return &now, nil
+	}
+	return &t, nil
 }
 
 // CleanupStaleProcessing resets processing items that have been stuck back to

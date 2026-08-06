@@ -158,13 +158,26 @@ Every URL gets one row in the `pages` table; the `status` column tracks its life
 - `discovered` — found as a link on a crawled page; recorded for link analysis only, not queued for crawling
 - `pending` — queued for crawling (seed URLs, and discovered links that pass the include/exclude filters)
 - `processing` — currently being fetched by a worker
-- `completed` — the fetch finished. Note: HTTP errors such as 404 are also `completed`; check the `status_code` column for the result
+- `completed` — the fetch finished. Note: permanent HTTP answers such as 404 and 410 are also `completed`; check the `status_code` column for the result
 - `skipped` — blocked by robots.txt
-- `error` — the fetch failed: transport-level failures (DNS, timeout, connection reset), a response body exceeding `max_response_size`, or a malformed URL
+- `error` — the fetch did not produce an answer we accepted: a transport-level failure (DNS, timeout, connection reset), a transient HTTP response that never recovered, a response body exceeding `max_response_size`, or a malformed URL
+
+An `error` row still carries whatever was observed. That makes two cases distinguishable, which matters when comparing one crawl against another:
+
+- `error` with a `status_code` — the server answered, transiently, and the retries ran out. The page's current content is **unknown**.
+- `error` with no `status_code` — no HTTP response ever arrived.
+
+Neither is evidence that a page was removed. An explicit `404` or `410`, recorded as `completed`, is the deletion signal.
 
 ### Retries
 
-After the queue drains, pages whose `last_error_type` is `network_error` are requeued for one retry pass per run, up to 3 attempts in total per URL (tracked in `retry_count`). Deterministic failures are not retried.
+Two kinds of failure are retried: transport-level failures (`network_error`), and transient HTTP responses — `408`, `429`, `500`, `502`, `503` and `504` — which are the server saying it could not answer right now. Every other status is a real answer about the resource and is never retried; retrying a `404` would only turn a useful signal into an unknown.
+
+Each URL gets 3 attempts in total for the whole crawl of a database, tracked in `retry_count`. A run left to finish spends the budget before it returns; a run you interrupt hands the remaining attempts to the next resume against the same database rather than starting the count over. Retries happen after the normal queue drains, or — with `--max-depth` — before the next depth layer opens, so a page that recovers still contributes its links to the right layer.
+
+Attempts are paced, transport failures included — a host that times out will time out again immediately, so retrying without a wait spends the whole budget in milliseconds. A `Retry-After` header is honored, capped at 60 seconds so a mistaken or hostile value cannot stall the crawl. Without that header the wait starts at 1 second and doubles per attempt, up to the same cap. The wait is stored in the database, so it survives an interrupted run: resuming does not restart the host immediately. Deterministic failures (malformed URLs, oversized responses) are not retried at all.
+
+Every failed attempt is recorded in the `crawl_errors` table with its status code and attempt number, so a URL that recovers on its third try still shows what the first two saw.
 
 ### robots.txt Crawl-delay
 

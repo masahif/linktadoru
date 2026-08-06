@@ -10,6 +10,10 @@ type URLItem struct {
 	// bounded crawl (--max-depth). An unbounded crawl leaves it zero and never
 	// reads it.
 	Depth int
+	// RetryCount is how many attempts this URL has already had. It travels with
+	// the claim so a failing attempt can record which attempt it was without a
+	// second round trip to the database.
+	RetryCount int
 }
 
 // PageData represents crawled page information
@@ -40,10 +44,16 @@ type LinkData struct {
 
 // CrawlError represents crawling errors
 type CrawlError struct {
-	URL          string    // URL where error occurred
-	ErrorType    string    // Error type (timeout, dns_error, connection_failed, etc.)
-	ErrorMessage string    // Detailed error message
-	OccurredAt   time.Time // Error occurrence timestamp (UTC)
+	URL          string // URL where error occurred
+	ErrorType    string // Error type (timeout, dns_error, connection_failed, etc.)
+	ErrorMessage string // Detailed error message
+	// StatusCode is the HTTP status observed on this attempt, or 0 when no
+	// response arrived at all. It is what separates "the server said 503" from
+	// "we never reached the server".
+	StatusCode int
+	// Attempt is 1 for the first attempt at this URL, counting up.
+	Attempt    int
+	OccurredAt time.Time // Error occurrence timestamp (UTC)
 }
 
 // CrawlState represents the current crawling state for resume functionality

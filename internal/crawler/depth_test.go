@@ -589,7 +589,7 @@ func TestMaxDepthResumeFinishesShallowRetriesFirst(t *testing.T) {
 	if err != nil || item == nil {
 		t.Fatalf("claim failed: (%v, %v)", item, err)
 	}
-	if err := store.SavePageError(item.ID, "network_error", "interrupted"); err != nil {
+	if err := store.SaveFailedAttempt(item.ID, nil, "network_error", "interrupted", time.Time{}); err != nil {
 		t.Fatalf("failed to record error: %v", err)
 	}
 	if err := store.AddToQueueWithDepth([]string{deep}, 1); err != nil {

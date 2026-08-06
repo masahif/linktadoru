@@ -64,7 +64,14 @@ CREATE TABLE IF NOT EXISTS pages (
     -- Error tracking
     retry_count INTEGER DEFAULT 0,
     last_error_type TEXT,
-    last_error_message TEXT
+    last_error_message TEXT,
+
+    -- Earliest time this row may be attempted again, written when an attempt
+    -- fails with something worth retrying. NULL means "no wait": the row has
+    -- never failed, or it failed before there was any pacing to record.
+    -- A server's Retry-After has to live somewhere durable because the retry
+    -- that honours it can outlive the round that scheduled it.
+    retry_after DATETIME
 );
 
 -- Indexes for efficient querying
@@ -137,12 +144,22 @@ FROM link_relations lr
 JOIN pages p1 ON lr.source_page_id = p1.id
 JOIN pages p2 ON lr.target_page_id = p2.id;
 
--- Separate errors table for detailed error tracking
+-- Separate errors table for detailed error tracking.
+--
+-- One row per failed attempt, so a URL that recovers on its third try leaves a
+-- readable trail of what the first two saw. pages.retry_count is the summary;
+-- this is the detail.
 CREATE TABLE IF NOT EXISTS crawl_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
     error_type TEXT NOT NULL,
     error_message TEXT,
+    -- The HTTP status observed on this attempt, or NULL when no response
+    -- arrived at all. This is what separates "the server said 503" from
+    -- "we never reached the server".
+    status_code INTEGER,
+    -- 1 for the first attempt at this URL, counting up.
+    attempt INTEGER,
     occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

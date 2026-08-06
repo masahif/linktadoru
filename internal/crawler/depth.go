@@ -128,12 +128,19 @@ func (c *DefaultCrawler) retryLayer(depth int) error {
 			return nil
 		}
 
-		retryable, err := c.storage.HasRetryablePagesAtDepth(MaxRetries, depth)
+		// One query drives the loop. Asking "is anything retryable?" and then
+		// requeueing would let the two answers disagree whenever a row is
+		// retryable but still waiting out its Retry-After — a correct state
+		// that the guard below would otherwise read as a fault.
+		due, err := c.storage.EarliestRetryTimeAtDepth(MaxRetries, depth)
 		if err != nil {
 			return fmt.Errorf("failed to check retryable pages at depth %d: %w", depth, err)
 		}
-		if !retryable {
+		if due == nil {
 			return nil
+		}
+		if !c.waitUntil(*due) {
+			return nil // cancelled while waiting
 		}
 
 		requeued, err := c.storage.RequeueErrorPagesAtDepth(MaxRetries, depth)
@@ -141,10 +148,10 @@ func (c *DefaultCrawler) retryLayer(depth int) error {
 			return fmt.Errorf("failed to requeue failed pages at depth %d: %w", depth, err)
 		}
 		if requeued == 0 {
-			// The two queries disagree: one says there is a retryable failure
-			// here, the other moved nothing. Looping would spin and continuing
-			// would open the next layer over an unfinished one, so neither is
-			// safe.
+			// The rows were due, so the two queries genuinely disagree: one says
+			// there is a retryable failure here, the other moved nothing.
+			// Looping would spin and continuing would open the next layer over
+			// an unfinished one, so neither is safe.
 			return fmt.Errorf("depth %d reports retryable pages but none could be requeued; refusing to continue", depth)
 		}
 

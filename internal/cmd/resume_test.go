@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,7 +35,7 @@ func seedRetryableError(t *testing.T, dbPath, url string) {
 	if err != nil || item == nil {
 		t.Fatalf("failed to claim URL: (%v, %v)", item, err)
 	}
-	if err := store.SavePageError(item.ID, "network_error", "interrupted"); err != nil {
+	if err := store.SaveFailedAttempt(item.ID, nil, "network_error", "interrupted", time.Time{}); err != nil {
 		t.Fatalf("failed to record error: %v", err)
 	}
 
@@ -206,7 +207,7 @@ func TestBoundedResumeRetriesDepthfulErrorsOnly(t *testing.T) {
 		if err != nil || item == nil {
 			t.Fatalf("failed to claim URL: (%v, %v)", item, err)
 		}
-		if err := store.SavePageError(item.ID, "network_error", "interrupted"); err != nil {
+		if err := store.SaveFailedAttempt(item.ID, nil, "network_error", "interrupted", time.Time{}); err != nil {
 			t.Fatalf("failed to record error: %v", err)
 		}
 
