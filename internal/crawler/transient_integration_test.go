@@ -322,10 +322,15 @@ func TestRetryReappliesRedirectHostPolicy(t *testing.T) {
 	}
 }
 
-// Bounded crawls keep retrying inside the layer: a page that only succeeds on
-// its second attempt still has children, and those children belong to the very
-// next layer.
-func TestTransientRetryRunsInsideTheLayer(t *testing.T) {
+// A seed that only succeeds on a later attempt still has children, and a
+// bounded crawl must end up fetching them.
+//
+// At max_depth 1 the retry runs after the normal queue drains rather than
+// inside a layer, so what this pins is the outcome rather than the ordering:
+// the recovered seed's child is crawled, at depth 1, and depth 2 is still out
+// of bounds. TestMaxDepthRetriesWithinLayerBeforeAdvancing covers the layered
+// case.
+func TestTransientRetryDrainsRecoveredChildren(t *testing.T) {
 	var seedHits atomic.Int32
 	var childSeen atomic.Bool
 

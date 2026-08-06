@@ -57,6 +57,38 @@ func (s *SQLiteStorage) AddToQueueWithDepth(urls []string, depth int) error {
 	return tx.Commit()
 }
 
+// GetNextFromQueueByDepthPriority atomically claims the shallowest pending URL.
+//
+// It prefers depth 0 but only looks at 'pending' rows, so a seed still being
+// fetched is not a candidate rather than a blocker — that is the head-of-line
+// blocking this mode exists to avoid. url makes the order total: every URL in
+// one batch shares an added_at, and SQLite's tie-break among equal keys is
+// unspecified.
+func (s *SQLiteStorage) GetNextFromQueueByDepthPriority() (*crawler.URLItem, error) {
+	var item crawler.URLItem
+
+	err := s.db.QueryRow(`
+		UPDATE pages
+		SET status = 'processing', processing_started_at = ?
+		WHERE id = (
+			SELECT id FROM pages
+			WHERE status = 'pending'
+			ORDER BY depth ASC, added_at ASC, url ASC
+			LIMIT 1
+		) AND status = 'pending'
+		RETURNING id, url, depth, retry_count
+	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL, &item.Depth, &item.RetryCount)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // nothing pending
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get next from queue by depth priority: %w", err)
+	}
+
+	return &item, nil
+}
+
 // GetNextFromQueueAtDepth atomically claims the next pending URL at exactly the
 // given depth. Restricting the claim to one layer is what implements the
 // barrier: a worker cannot start on depth d+1 while depth d is still open.

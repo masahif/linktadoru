@@ -322,9 +322,12 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	}()
 
 	var runErr error
-	if c.bounded() {
+	if c.strictLayers() {
 		runErr = c.runBoundedCrawl()
 	} else {
+		// Both the unbounded crawl and max_depth 1 come through here, differing
+		// only in which rows a worker may claim (see nextQueueItem).
+		//
 		// Always wait for the workers themselves. On external cancellation they
 		// exit promptly (in-flight requests carry c.ctx), and waiting here is what
 		// makes shutdown graceful: Start does not return while a worker may still
@@ -533,7 +536,7 @@ func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
 		hasItems bool
 		err      error
 	)
-	if c.bounded() {
+	if c.strictLayers() {
 		// Scoped to the current layer: work waiting at a deeper layer is not
 		// this round's to do, and treating it as "still busy" would keep the
 		// workers alive past the barrier.
@@ -548,14 +551,21 @@ func (c *DefaultCrawler) shouldExitOnEmptyQueue() bool {
 	return !hasItems
 }
 
-// nextQueueItem claims the next URL a worker should process: the next pending
-// row at the current depth for a bounded crawl, or the next pending row at all
-// for an unbounded one.
+// nextQueueItem claims the next URL a worker should process. The three
+// scheduling modes differ here and almost nowhere else.
 func (c *DefaultCrawler) nextQueueItem() (*URLItem, error) {
-	if c.bounded() {
+	switch {
+	case c.strictLayers():
+		// Only the layer currently open. This is what the barrier is.
 		return c.storage.GetNextFromQueueAtDepth(c.layerDepth)
+	case c.bounded():
+		// max_depth 1: shallowest pending row first, but nothing is off limits.
+		// A depth-0 row still being fetched is not a reason to leave a worker
+		// idle when depth-1 rows are ready to go.
+		return c.storage.GetNextFromQueueByDepthPriority()
+	default:
+		return c.storage.GetNextFromQueue()
 	}
-	return c.storage.GetNextFromQueue()
 }
 
 // workerSleep applies the configured delay between requests
