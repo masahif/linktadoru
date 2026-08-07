@@ -145,6 +145,59 @@ func TestCrawlRespectsIncludePatterns(t *testing.T) {
 	}
 }
 
+func TestFollowExternalHostsIgnoresIncludesButHonorsExcludes(t *testing.T) {
+	var externalHits atomic.Int32
+	var leakedSecret atomic.Bool
+	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		externalHits.Add(1)
+		if r.Header.Get("X-Test-Secret") != "" {
+			leakedSecret.Store(true)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>external</body></html>"))
+	}))
+	defer external.Close()
+
+	seed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(
+			`<a href="` + external.URL + `/public">public</a>` +
+				`<a href="` + external.URL + `/private/page">private</a>`,
+		))
+	}))
+	defer seed.Close()
+
+	cfg := baseCfg()
+	cfg.SeedURLs = []string{seed.URL}
+	cfg.FollowExternalHosts = true
+	cfg.IncludePatterns = []string{`^https://included\.example/only$`}
+	cfg.ExcludePatterns = []string{`/private/`}
+	cfg.Headers = []string{"X-Test-Secret: secret"}
+
+	store := newStore(t)
+	c, err := crawler.NewCrawler(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Stop() }()
+	if err := c.Start(context.Background(), cfg.SeedURLs); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := statusOf(t, store, external.URL+"/public"); got != "completed" {
+		t.Fatalf("external public URL status = %q, want completed", got)
+	}
+	if got, _ := statusOf(t, store, external.URL+"/private/page"); got != "discovered" {
+		t.Fatalf("excluded external URL status = %q, want discovered", got)
+	}
+	if got := externalHits.Load(); got != 1 {
+		t.Fatalf("external origin received %d requests, want 1", got)
+	}
+	if leakedSecret.Load() {
+		t.Fatal("configured secret header leaked to the external origin")
+	}
+}
+
 // Regression: a seed whose fetch fails at the network layer must not hang the
 // crawler. The processor returns such failures as result.Error with Page == nil,
 // which must still move the row out of 'processing' to a terminal state — else

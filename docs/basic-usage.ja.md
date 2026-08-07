@@ -106,7 +106,8 @@ exclude_patterns:
 `https://hogehoge.com/account`と`/ika/`を含むURLを拒否します。
 includeだけで許可されたoriginへは、認証情報や設定済みcustom headerを送りません。
 `^https?://.*$`のような広いincludeは、`follow_external_hosts: true`と同じ到達リスクを
-持ちます。
+持ちます。`follow_external_hosts: true`の場合、`include_patterns`では許可範囲を
+狭められません。制限には`exclude_patterns`を使用してください。
 
 ## 高度な使用例
 

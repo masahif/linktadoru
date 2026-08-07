@@ -97,48 +97,61 @@ jobs:
     - name: Generate release notes
       id: release_notes
       run: |
-        # Get commits since last tag
-        if git describe --tags --abbrev=0 HEAD~1 >/dev/null 2>&1; then
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1)
-          COMMITS=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
-        else
-          COMMITS=$(git log --pretty=format:"- %s (%h)" --max-count=10)
-        fi
-        
-        cat > release_notes.md << EOF
-        ## Changes in ${{ steps.version.outputs.tag }}
-        
-        $COMMITS
-        
+        VERSION="${{ steps.version.outputs.version }}"
+        awk -v heading="## [$VERSION]" '
+          { sub(/\r$/, "") }
+          $0 == heading || index($0, heading " - ") == 1 {
+            found = 1
+            next
+          }
+          found && /^## \[/ { exit }
+          found {
+            print
+            if ($0 !~ /^[[:space:]]*$/) content = 1
+          }
+          END {
+            if (!found || !content) {
+              print "CHANGELOG.md has no non-empty section for " heading > "/dev/stderr"
+              exit 1
+            }
+          }
+        ' CHANGELOG.md > changelog_release_notes.md
+
+        {
+          echo "## Changes in ${{ steps.version.outputs.tag }}"
+          echo
+          cat changelog_release_notes.md
+          cat <<'EOF'
         ## Downloads
-        
+
         Choose the appropriate binary for your platform:
-        
-        - **Linux x86_64**: \`linktadoru-linux-amd64\`
-        - **Linux ARM64**: \`linktadoru-linux-arm64\`
-        - **macOS ARM64**: \`linktadoru-darwin-arm64\`
-        - **Windows x86_64**: \`linktadoru-windows-amd64.exe\`
-        
+
+        - **Linux x86_64**: `linktadoru-linux-amd64`
+        - **Linux ARM64**: `linktadoru-linux-arm64`
+        - **macOS ARM64**: `linktadoru-darwin-arm64`
+        - **Windows x86_64**: `linktadoru-windows-amd64.exe`
+
         ## Installation
-        
+
         ### Linux / macOS
-        \`\`\`bash
+        ```bash
         # Download and make executable
         chmod +x linktadoru-linux-amd64
         ./linktadoru-linux-amd64 --version
-        \`\`\`
-        
+        ```
+
         ### Windows
-        \`\`\`powershell
+        ```powershell
         # Test the binary
-        .\\linktadoru-windows-amd64.exe --version
-        \`\`\`
-        
+        .\linktadoru-windows-amd64.exe --version
+        ```
+
         ### Using Go
-        \`\`\`bash
+        ```bash
         go install github.com/masahif/linktadoru/cmd/crawler@${{ steps.version.outputs.tag }}
-        \`\`\`
+        ```
         EOF
+        } > release_notes.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v3

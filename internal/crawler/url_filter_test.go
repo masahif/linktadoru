@@ -69,13 +69,18 @@ func TestURLPolicyRejectsLegacyRelativeInclude(t *testing.T) {
 	}
 }
 
-func TestURLPolicyFollowExternalStillHonorsExclude(t *testing.T) {
-	policy, err := newURLPolicy(nil, nil, []string{`/private/`}, true)
+func TestURLPolicyFollowExternalIgnoresIncludeAndHonorsExclude(t *testing.T) {
+	policy, err := newURLPolicy(
+		nil,
+		[]string{`^https://included\.example/only$`},
+		[]string{`/private/`},
+		true,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !policy.allows("https://other.example/public/page") {
-		t.Fatal("follow_external_hosts did not allow an external URL")
+		t.Fatal("include_patterns unexpectedly narrowed follow_external_hosts")
 	}
 	if policy.allows("https://other.example/private/page") {
 		t.Fatal("exclude did not override follow_external_hosts")

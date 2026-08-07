@@ -20,7 +20,7 @@ This table is the authoritative reference for all options. Run `./linktadoru --h
 | request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout (Go duration) |
 | user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
 | ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
-| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Compatibility switch allowing every URL with an allowed scheme; excludes still win |
+| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Compatibility switch allowing every URL with an allowed scheme; includes do not narrow it and excludes still win |
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
 | max_depth | `--max-depth` | `LT_MAX_DEPTH` | 0 | Maximum first-discovery depth; 0=unlimited, seeds=0 |
 | max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes (10 MiB) |
@@ -124,7 +124,9 @@ This allows `https://example.com/news/1` and
 `https://hogehoge.com/account` or an otherwise allowed URL containing
 `/ika/`. An include-only origin never receives authentication or configured
 custom headers. A broad include such as `^https?://.*$` has the same reach risk
-as `follow_external_hosts: true`.
+as `follow_external_hosts: true`. When `follow_external_hosts` is true,
+`include_patterns` do not narrow its allow-all scope; use `exclude_patterns` to
+restrict it.
 
 Before this change, includes narrowed an already host-limited set. Existing
 absolute cross-origin includes now actively add that range. Rewrite relative
