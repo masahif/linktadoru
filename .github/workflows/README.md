@@ -23,7 +23,7 @@ Note: direct pushes to `main` do not trigger CI. Run it manually when needed: `g
 - Test execution (final confirmation)
 - Multi-platform builds (Linux amd64/arm64, macOS arm64, Windows amd64)
 - Automatic GitHub Release creation
-- Release notes generation
+- Release notes generation from the matching version section in `CHANGELOG.md`
 
 ## Local Testing (act)
 

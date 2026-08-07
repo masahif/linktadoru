@@ -6,37 +6,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Compatibility and upgrade notes
+- **URL include semantics changed from filtering to authorization.** Persisted
+  depth-0 seed origins are always allowed; `include_patterns` now add absolute
+  full-URL ranges, and `exclude_patterns` subtract from the combined set.
+  Relative includes such as `/products/` are rejected at startup. During
+  discovered-link admission, existing absolute includes for non-seed origins
+  were previously inert behind the seed-host check; they now actively authorize
+  those ranges.
+- **`follow_external_hosts: true` now performs external fetches.** In v0.9.2,
+  the parent-host link gate left discovered external URLs graph-only even when
+  this option was enabled. It now permits crawling every URL with an allowed
+  scheme; `include_patterns` do not narrow this allow-all mode, while
+  `exclude_patterns` still apply. Review existing `true` configurations before
+  upgrading because their network reach can expand substantially, including to
+  private or link-local destinations linked by a crawled page.
+- **Bounded crawl depth is first-admission depth, not shortest-path BFS depth.**
+  Seeds are depth 0 and a newly queued child is `parent depth + 1`. All depths
+  use the asynchronous queue without a layer barrier. For `max_depth >= 2`, a
+  URL first admitted through a longer path can prevent descendants from being
+  fetched even if a shorter path is discovered later; response timing can
+  therefore affect the fetched set.
+- **Existing databases receive a nullable `pages.depth` column.** A run stops
+  before network access when unfinished legacy rows have unknown depth. Supply
+  those URLs explicitly as seeds, or use a fresh database. Changing seeds or
+  `max_depth` in a reused database does not retroactively recompute the depth of
+  other admitted or terminal rows; use a fresh database for independently
+  comparable snapshots.
+- **Explicit seeds now mean an explicit refresh.** Re-supplying an existing URL
+  queues it at depth 0, resets its retry budget, and clears its prior page/error
+  observation. Normal duplicate discovery still does not re-fetch terminal
+  rows. Command-line URL arguments and `--seed-file` also take precedence over
+  `seed_urls` loaded from configuration.
+- **Credential trust is invocation-specific.** Authentication and configured
+  custom headers are sent only to origins supplied as seeds in the current
+  invocation. A seedless resume with credentials configured fails closed and
+  asks for the seed list again.
+
 ### Added
-- `--seed-file` reads generated seed lists from a file or standard input.
-- SQLite now persists first-discovery depth. `max_depth: N` accepts any
-  non-negative N, prioritizes shallow queued work without a breadth-first
-  barrier, and supports depth-preserving resume.
+- `--seed-file` reads generated seed lists from a file or standard input (#67).
+- SQLite persists first-discovery depth. `max_depth: N` accepts any non-negative
+  N, prioritizes shallower queued work, and supports depth-preserving resume
+  (#68, #72).
 - URL authorization now uses one policy: exact persisted seed origins plus
   full-URL include regexes, minus exclude regexes. Includes can explicitly add
-  cross-origin ranges; relative legacy includes fail with a migration message.
+  cross-origin ranges; relative legacy includes fail with a migration message
+  (#79).
 
 ### Changed
-- Re-supplying an existing URL as a seed re-fetches it at depth 0 and clears
-  stale observations. Normal duplicate discovery still does not re-fetch a
-  queued or terminal URL.
 - Runs without explicit seeds now drain resumable database work, including
   bounded crawls, or exit successfully when no work remains.
-- Seed URLs containing userinfo are rejected; configure credentials separately.
-- Crawling stops before network access when a migrated database has unfinished
-  rows with unknown depth. Supply those URLs as seeds or use a fresh database.
-- Existing absolute non-seed-origin includes are now active cross-origin
-  authorization under OR semantics. Review these patterns before upgrading.
-- Credentials and configured custom headers are sent only to origins supplied
-  as seeds in the current invocation, and never reappear after an A-B-A
-  cross-origin redirect chain.
 - Outgoing external links are retained as graph-only `discovered` rows even
   when their URLs are not authorized for fetching.
 - In multi-seed crawls, links between persisted seed origins can now be fetched;
   the old parent-host `internal` link gate no longer narrows the shared policy.
+- Dependencies: `golang.org/x/net` 0.56.0 → 0.57.0 and
+  `modernc.org/sqlite` 1.38.2 → 1.56.0. GitHub Actions were updated to
+  `setup-go` v7, `upload-artifact` v7, and `softprops/action-gh-release` v3.
+
+### Security
+- The redirect protections released in v0.9.2 for
+  [GHSA-2692-7f24-52v6](https://github.com/masahif/linktadoru/security/advisories/GHSA-2692-7f24-52v6)
+  remain in force: every redirect hop is checked by the same URL policy before
+  contact, and cross-origin credentials and configured secret headers are
+  removed.
+- URL policy is evaluated before robots.txt lookup or any other network request;
+  a denied queued URL is stored as `skipped` without contacting its origin.
+- Credentials are never sent to origins authorized only by `include_patterns`,
+  and once an A-B-A redirect chain leaves its initial origin they do not
+  reappear when the chain returns to A.
+- Seed URLs containing userinfo are rejected; configure credentials separately.
 
 ### Fixed
 - HTTP 408, 429, 500, 502, 503, and 504 responses are now retained as errors
-  and retried after normal queue work, up to 3 total attempts per URL.
+  with their response status, headers, timing, and size, then retried after
+  normal queue work, up to 3 total attempts per URL. Permanent responses such
+  as 403, 404, and 410 remain completed observations and are not retried (#71).
+
+### Known limitations
+- Transient retries use the normal per-domain delay and robots.txt
+  `Crawl-delay`, but do not honor `Retry-After` or add a separate backoff.
+- A page that succeeds after a retry is marked `completed`, but its
+  `last_error_type`, error message, and retry count remain as attempt history;
+  use `pages.status` as the final outcome.
+- URL regex matching uses the stored absolute URL text and does not
+  percent-decode it. For example, `/ika/` does not match `/%69ka/`.
+- `follow_external_hosts: true` is an explicit allow-all compatibility mode;
+  there is no separate private-network, loopback, link-local, or cloud-metadata
+  address deny floor.
 
 ## [0.9.2] - 2026-08-05
 

@@ -25,12 +25,20 @@ This project follows [Semantic Versioning](https://semver.org/):
 git checkout main
 git pull
 
-# 2. Create version tag
+# 2. Finalize and commit the matching CHANGELOG section
+#    Example: ## [1.0.0] - YYYY-MM-DD
+#    The release workflow fails if this section is missing or empty.
+
+# 3. Create version tag
 git tag v1.0.0
 
-# 3. Push tag (release workflow runs automatically)
+# 4. Push tag (release workflow runs automatically)
 git push origin v1.0.0
 ```
+
+The GitHub Release body is generated from the `CHANGELOG.md` section matching
+the tag without its `v` prefix. Finalize that section before creating the tag;
+the workflow deliberately does not fall back to an unreviewed commit list.
 
 ### 2.2 Pre-release (Beta)
 
