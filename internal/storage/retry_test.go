@@ -37,14 +37,6 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 	}
 
 	// Transport and selected HTTP failures are eligible.
-	items, err := store.GetRetryablePages(3)
-	if err != nil {
-		t.Fatalf("GetRetryablePages: %v", err)
-	}
-	if len(items) != 2 {
-		t.Errorf("retryable = %+v, want network and transient HTTP pages", items)
-	}
-
 	requeued, err := store.RequeueErrorPages(3)
 	if err != nil {
 		t.Fatalf("RequeueErrorPages: %v", err)

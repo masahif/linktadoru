@@ -20,7 +20,7 @@ Crawl up to 10 pages with 2 concurrent workers and a 2-second delay (`--delay` t
 ./linktadoru --limit 10 --concurrency 2 --delay 2 https://httpbin.org
 ```
 
-### 3. Seed Lists and One-Hop Crawls
+### 3. Seed Lists and Depth-Limited Crawls
 
 Read generated targets from a file, or use `-` for standard input:
 
@@ -33,11 +33,13 @@ Seed files contain one URL per line. Blank lines, surrounding whitespace, and
 lines beginning with `#` are ignored. `--seed-file` cannot be combined with URL
 arguments.
 
-`max_depth: 0` is unlimited. A positive value admits links through that
-discovery depth: seeds are depth 0, their links are depth 1, and so on. The
-queue remains asynchronous, so one slow page does not block deeper work already
-admitted by another worker. Until URL-policy restoration lands, every bounded
-run requires explicit seeds and a fresh database.
+`max_depth: N` includes seeds at depth 0 through children admitted at depth N;
+0 is unlimited. The persisted value is first-discovery depth, not a guaranteed
+shortest path. The asynchronous queue prefers shallow work but does not wait for
+an entire layer, so one slow page does not block other workers. Consequently,
+for N >= 2, response timing can affect which descendants fit inside the bound.
+Use a fresh database for independently comparable snapshots or when changing
+the bound must reinterpret all work.
 
 Selected temporary responses (408, 429, 500, 502, 503, 504) are retained in the
 database and retried after normal queue work, up to three total attempts.
@@ -57,12 +59,12 @@ limit: 50
 database_path: "./mysite-crawl.db"
 
 include_patterns:
-  - "^https?://[^/]*httpbin\\.org/.*"
+  - '^https://search\.example/search(?:/.*)?(?:\?.*)?$'
 
 exclude_patterns:
-  - "\\.pdf$"
-  - "/admin/.*"
-  - ".*\\?print=1"
+  - '\.pdf$'
+  - '/admin/'
+  - '[?&]print=1(?:&|$)'
 ```
 
 Run with configuration:
@@ -70,6 +72,9 @@ Run with configuration:
 ```bash
 ./linktadoru --config mysite-config.yml https://httpbin.org
 ```
+
+See [Configuration](configuration.md#url-policy-and-regular-expressions) for
+the include/exclude authorization model and regular-expression examples.
 
 ## Advanced Examples
 
@@ -107,16 +112,19 @@ LinkTadoru automatically resumes from existing database:
   https://httpbin.org
 ```
 
-### 4. Focused Crawling with Patterns
+### 4. Extending Scope with Patterns
 
-Crawl only blog posts and articles:
+Add a related search endpoint and skip static assets:
 
 ```bash
 ./linktadoru \
-  --include-patterns "^https?://[^/]*httpbin\.org/(blog|articles)/.*" \
+  --include-patterns "^https://search\.example/search(?:/.*)?(?:\?.*)?$" \
   --exclude-patterns "\\.jpg$|\\.png$|\\.css$|\\.js$" \
-  https://httpbin.org
+  https://example.com
 ```
+
+The seed origin remains allowed. The include adds only the matching
+`search.example` range, and the exclude removes matching assets from both.
 
 ## How Crawling Behaves
 
@@ -145,7 +153,7 @@ A `Crawl-delay` in robots.txt is honored when it is slower than your configured 
 
 ### Interrupting and Resuming
 
-Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start. Bounded `max_depth` runs temporarily require explicit seeds and a fresh, empty database.
+Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start, and their discovery depth is preserved. Supplying a URL explicitly as a seed fetches it again at depth 0. Depth-0 roots accumulate in a reused database: a later seed list extends rather than replaces the earlier roots, and already queued work remains. Use a new database to replace the root set or create an independently comparable snapshot. A seedless resume cannot use authentication or custom headers because credential origins cannot be inferred safely; supply the seed list again. When seeds are supplied, credentials are sent only to origins in that invocation, not to older accumulated roots.
 
 ## Output Analysis
 

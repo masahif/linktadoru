@@ -83,7 +83,7 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                     # 0 = unlimited
-max_depth: 0                 # 0 = unlimited; N > 0 includes discovery depth N
+max_depth: 0                 # 0 = unlimited; positive N includes discovery depth N
 
 # URL filtering
 include_patterns: []

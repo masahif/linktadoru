@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -24,13 +23,7 @@ type DefaultCrawler struct {
 	processor    PageProcessor
 	rateLimiter  *RateLimiter
 	robotsParser *RobotsParser
-	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
-
-	// Include/exclude patterns compiled once at construction. Compiling here
-	// (a) rejects an invalid pattern at startup instead of silently never
-	// matching it, and (b) avoids recompiling every pattern for every URL.
-	includePatterns []*regexp.Regexp
-	excludePatterns []*regexp.Regexp
+	urlPolicy    *urlPolicy
 
 	// State
 	stats      CrawlStats
@@ -99,117 +92,42 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 	}
 
 	// Initialize components
-	processor := NewPageProcessorWithConfig(httpClient, config.AllowedSchemes, config.FollowExternalHosts)
+	processor := NewPageProcessorWithConfig(httpClient, config.AllowedSchemes, true)
 	rateLimiter := NewRateLimiter(time.Duration(config.RequestDelay * float64(time.Second)))
 	robotsParser := NewRobotsParser(httpClient, config.IgnoreRobotsTxt)
 
-	// Extract allowed hosts from seed URLs for same-host filtering
-	allowedHosts := make([]string, 0, len(config.SeedURLs))
-	for _, seedURL := range config.SeedURLs {
-		if parsedURL, err := url.Parse(seedURL); err == nil {
-			host := parsedURL.Scheme + "://" + parsedURL.Host
-			// Avoid duplicates
-			found := false
-			for _, existing := range allowedHosts {
-				if existing == host {
-					found = true
-					break
-				}
-			}
-			if !found {
-				allowedHosts = append(allowedHosts, host)
-			}
-		}
-	}
-
-	// Compile URL filter patterns up front so an invalid regex fails the run
-	// loudly instead of being silently ignored on every URL.
-	includePatterns, err := compilePatterns(config.IncludePatterns)
+	policy, err := newURLPolicy(
+		config.AllowedSchemes,
+		config.IncludePatterns,
+		config.ExcludePatterns,
+		config.FollowExternalHosts,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("invalid include_patterns: %w", err)
+		return nil, fmt.Errorf("invalid URL policy: %w", err)
 	}
-	excludePatterns, err := compilePatterns(config.ExcludePatterns)
-	if err != nil {
-		return nil, fmt.Errorf("invalid exclude_patterns: %w", err)
+	if len(config.IncludePatterns) > 0 {
+		slog.Warn("include_patterns add URL ranges; seed origins remain allowed; use exclude_patterns to narrow them")
 	}
 
 	crawler := &DefaultCrawler{
-		config:          config,
-		storage:         storage,
-		httpClient:      httpClient,
-		processor:       processor,
-		rateLimiter:     rateLimiter,
-		robotsParser:    robotsParser,
-		allowedHosts:    allowedHosts,
-		includePatterns: includePatterns,
-		excludePatterns: excludePatterns,
+		config:       config,
+		storage:      storage,
+		httpClient:   httpClient,
+		processor:    processor,
+		rateLimiter:  rateLimiter,
+		robotsParser: robotsParser,
+		urlPolicy:    policy,
 		stats: CrawlStats{
 			StartTime: time.Now(),
 		},
 	}
 
-	// Redirects must clear the same host filter as newly discovered URLs.
-	// Checking only the initial URL lets a 302 walk the crawler onto a host it
-	// was never allowed to reach.
+	// Redirects use the same URL policy as claimed and discovered URLs.
 	httpClient.SetRedirectPolicy(func(u *url.URL) bool {
-		return crawler.isAllowedHost(u.String())
+		return crawler.urlPolicy.allows(u.String())
 	})
 
 	return crawler, nil
-}
-
-// compilePatterns compiles a list of regex patterns, reporting the offending
-// pattern on failure.
-func compilePatterns(patterns []string) ([]*regexp.Regexp, error) {
-	compiled := make([]*regexp.Regexp, 0, len(patterns))
-	for _, p := range patterns {
-		re, err := regexp.Compile(p)
-		if err != nil {
-			return nil, fmt.Errorf("pattern %q: %w", p, err)
-		}
-		compiled = append(compiled, re)
-	}
-	return compiled, nil
-}
-
-// isAllowedHost checks if the given URL's host is allowed for crawling
-func (c *DefaultCrawler) isAllowedHost(targetURL string) bool {
-	// First check if URL has an allowed scheme
-	if !c.isAllowedScheme(targetURL) {
-		return false
-	}
-
-	// If external hosts are allowed, accept any valid scheme
-	if c.config.FollowExternalHosts {
-		return true
-	}
-
-	// Check if URL starts with any allowed host prefix
-	for _, allowedHost := range c.allowedHosts {
-		// Allow exact match or prefix with trailing slash
-		if targetURL == allowedHost || strings.HasPrefix(targetURL, allowedHost+"/") {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isAllowedScheme checks if the URL has an allowed scheme
-func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
-	// Use configured allowed schemes, fallback to defaults if empty
-	allowedSchemes := c.config.AllowedSchemes
-	if len(allowedSchemes) == 0 {
-		allowedSchemes = []string{"https://", "http://"}
-	}
-
-	for _, scheme := range allowedSchemes {
-		if strings.HasPrefix(targetURL, scheme) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // Start starts the crawling process
@@ -222,17 +140,12 @@ func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
 func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
-	if c.config.MaxDepth > 0 {
-		if len(seedURLs) == 0 {
-			return fmt.Errorf("--max-depth requires seed URLs and a fresh database")
-		}
-		hasPages, err := c.storage.HasAnyPages()
-		if err != nil {
-			return fmt.Errorf("failed to inspect database before bounded crawl: %w", err)
-		}
-		if hasPages {
-			return fmt.Errorf("--max-depth requires a fresh database")
-		}
+
+	if err := c.urlPolicy.validateExplicitURLs(seedURLs); err != nil {
+		return err
+	}
+	if len(seedURLs) == 0 && c.hasConfiguredCredentials() {
+		return fmt.Errorf("seedless resume cannot use authentication or custom headers; supply the seed URLs again")
 	}
 
 	// Reset rows left in 'processing' by a previous interrupted run back to
@@ -260,6 +173,27 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	} else {
 		slog.Info("Starting crawler - resuming from existing queue")
 	}
+
+	depthZeroURLs, err := c.storage.GetDepthZeroURLs()
+	if err != nil {
+		return fmt.Errorf("failed to restore URL policy roots: %w", err)
+	}
+	if err := c.urlPolicy.setImplicitOrigins(depthZeroURLs); err != nil {
+		return fmt.Errorf("failed to restore URL policy roots: %w", err)
+	}
+	credentialOrigins, err := c.urlPolicy.origins(seedURLs)
+	if err != nil {
+		return fmt.Errorf("failed to build credential policy: %w", err)
+	}
+	// This policy is installed before workers start and is read-only afterward.
+	c.httpClient.SetCredentialPolicy(func(u *url.URL) bool {
+		_, origin, err := c.urlPolicy.parse(u.String())
+		if err != nil {
+			return false
+		}
+		_, ok := credentialOrigins[origin]
+		return ok
+	})
 
 	// Step 2: Start workers after queue is populated
 	for i := 0; i < c.config.Concurrency; i++ {
@@ -418,6 +352,16 @@ func (c *DefaultCrawler) workerSleep() {
 
 // processURLItem processes a single URL item from the queue
 func (c *DefaultCrawler) processURLItem(id int, item *URLItem) {
+	// Authorization precedes robots.txt because that lookup is itself a
+	// network request to the claimed URL's origin.
+	if !c.urlPolicy.allows(item.URL) {
+		slog.Info("URL denied by URL policy", "worker_id", id, "url", item.URL)
+		if err := c.storage.SavePageSkipped(item.ID, "url_policy_denied", "Denied by URL policy"); err != nil {
+			slog.Error("Worker failed to save URL policy skip", "worker_id", id, "error", err)
+		}
+		return
+	}
+
 	// Check robots.txt
 	if !c.shouldProcessURL(id, item) {
 		return
@@ -584,7 +528,7 @@ func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, parent *URLIt
 
 	var newURLs []string
 	for _, link := range links {
-		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {
+		if !c.urlPolicy.allows(link.TargetURL) {
 			continue
 		}
 		newURLs = append(newURLs, link.TargetURL)
@@ -631,35 +575,18 @@ func (c *DefaultCrawler) statsReporter() {
 
 // Helper methods
 
-// shouldCrawlURL determines if a URL should be crawled based on include/exclude patterns
-func (c *DefaultCrawler) shouldCrawlURL(urlStr string) bool {
-	// First check if the host is allowed for crawling
-	if !c.isAllowedHost(urlStr) {
-		return false
+func (c *DefaultCrawler) hasConfiguredCredentials() bool {
+	if len(c.config.Headers) > 0 {
+		return true
 	}
-
-	// If include patterns are specified, URL must match at least one
-	if len(c.includePatterns) > 0 {
-		matched := false
-		for _, re := range c.includePatterns {
-			if re.MatchString(urlStr) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
+	if username, password := c.config.GetBasicAuthCredentials(); username != "" || password != "" {
+		return true
 	}
-
-	// Check exclude patterns - URL must not match any
-	for _, re := range c.excludePatterns {
-		if re.MatchString(urlStr) {
-			return false
-		}
+	if c.config.GetBearerToken() != "" {
+		return true
 	}
-
-	return true
+	header, value := c.config.GetAPIKeyCredentials()
+	return header != "" || value != ""
 }
 
 func (c *DefaultCrawler) incrementCrawledCount() {

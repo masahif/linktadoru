@@ -11,7 +11,9 @@ import (
 )
 
 // MockStorage implements Storage interface for testing
-type MockStorage struct{}
+type MockStorage struct {
+	depthZero []string
+}
 
 type seedRecordingStorage struct {
 	MockStorage
@@ -67,6 +69,7 @@ func (m *MockStorage) Close() error {
 }
 
 func (m *MockStorage) AddSeeds(urls []string) error {
+	m.depthZero = append(m.depthZero, urls...)
 	return nil
 }
 
@@ -110,15 +113,11 @@ func (m *MockStorage) SetMeta(key, value string) error {
 	return nil
 }
 
-func (m *MockStorage) GetURLStatus(url string) (status string, exists bool) {
-	return "", false
-}
-
 func (m *MockStorage) HasQueuedItems() (bool, error) {
 	return false, nil
 }
 
-func (m *MockStorage) HasAnyPages() (bool, error) {
+func (m *MockStorage) HasResumableWork() (bool, error) {
 	return false, nil
 }
 
@@ -126,12 +125,12 @@ func (m *MockStorage) ValidateDepthTracking(seedURLs []string) error {
 	return nil
 }
 
-func (m *MockStorage) SavePageSkipped(id int, reason, message string) error {
-	return nil
+func (m *MockStorage) GetDepthZeroURLs() ([]string, error) {
+	return append([]string(nil), m.depthZero...), nil
 }
 
-func (m *MockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
-	return nil, nil
+func (m *MockStorage) SavePageSkipped(id int, reason, message string) error {
+	return nil
 }
 
 func (m *MockStorage) RequeueErrorPages(maxRetries int) (int, error) {

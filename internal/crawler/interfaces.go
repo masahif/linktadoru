@@ -40,19 +40,16 @@ type Storage interface {
 	GetQueueStatus() (pending int, processing int, completed int, errors int, err error)
 	CleanupStaleProcessing(timeout time.Duration) error
 	HasQueuedItems() (bool, error) // Check if queue has any work items (pending or processing)
-	HasAnyPages() (bool, error)
+	HasResumableWork() (bool, error)
 	ValidateDepthTracking(seedURLs []string) error
+	GetDepthZeroURLs() ([]string, error)
 
 	// Retry management
-	GetRetryablePages(maxRetries int) ([]URLItem, error)
 	RequeueErrorPages(maxRetries int) (int, error)
 
 	// Meta-data management
 	GetMeta(key string) (string, error)
 	SetMeta(key, value string) error
-
-	// URL status check (any status)
-	GetURLStatus(url string) (status string, exists bool)
 
 	// Database lifecycle
 	Close() error

@@ -84,14 +84,14 @@ func TestNewCrawlerRejectsInvalidPatterns(t *testing.T) {
 
 	cfg := base()
 	cfg.IncludePatterns = []string{"["}
-	if _, err := NewCrawler(cfg, &MockStorage{}); err == nil || !strings.Contains(err.Error(), "include_patterns") {
-		t.Errorf("invalid include pattern: err = %v, want include_patterns compile error", err)
+	if _, err := NewCrawler(cfg, &MockStorage{}); err == nil || !strings.Contains(err.Error(), "include pattern") {
+		t.Errorf("invalid include pattern: err = %v, want include pattern error", err)
 	}
 
 	cfg = base()
 	cfg.ExcludePatterns = []string{"(unclosed"}
-	if _, err := NewCrawler(cfg, &MockStorage{}); err == nil || !strings.Contains(err.Error(), "exclude_patterns") {
-		t.Errorf("invalid exclude pattern: err = %v, want exclude_patterns compile error", err)
+	if _, err := NewCrawler(cfg, &MockStorage{}); err == nil || !strings.Contains(err.Error(), "exclude pattern") {
+		t.Errorf("invalid exclude pattern: err = %v, want exclude pattern error", err)
 	}
 }
 

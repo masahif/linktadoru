@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,14 +108,35 @@ func TestCrawlRespectsExcludePatterns(t *testing.T) {
 // Test C (include): when include_patterns is set, a non-matching URL is recorded
 // as 'discovered' but never crawled.
 func TestCrawlRespectsIncludePatterns(t *testing.T) {
-	cfg := baseCfg()
-	cfg.IncludePatterns = []string{"/articles/"}
-	store, base := runCrawl(t, cfg, []string{"/articles/ok", "/other/no"})
+	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>external</body></html>"))
+	}))
+	defer external.Close()
 
-	if got, _ := statusOf(t, store, base+"/articles/ok"); got != "completed" {
+	seed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<a href="` + external.URL + `/articles/ok">ok</a><a href="` + external.URL + `/other/no">no</a>`))
+	}))
+	defer seed.Close()
+
+	cfg := baseCfg()
+	cfg.SeedURLs = []string{seed.URL}
+	cfg.IncludePatterns = []string{`^` + regexp.QuoteMeta(external.URL) + `/articles/ok$`}
+	store := newStore(t)
+	c, err := crawler.NewCrawler(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Stop() }()
+	if err := c.Start(context.Background(), cfg.SeedURLs); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := statusOf(t, store, external.URL+"/articles/ok"); got != "completed" {
 		t.Errorf("/articles/ok status = %q, want completed", got)
 	}
-	got, exists := statusOf(t, store, base+"/other/no")
+	got, exists := statusOf(t, store, external.URL+"/other/no")
 	if !exists {
 		t.Fatal("/other/no should exist as a link-graph node")
 	}
@@ -170,7 +193,7 @@ func TestNetworkErrorDoesNotHangAndMarksTerminal(t *testing.T) {
 // Regression: a malformed seed URL (one that fails url.Parse in the rate
 // limiter) must be driven to a terminal state, not left in 'processing' where it
 // would hang the HasQueuedItems()-based worker exit.
-func TestMalformedURLDoesNotHangAndMarksTerminal(t *testing.T) {
+func TestMalformedSeedURLFailsBeforeCrawl(t *testing.T) {
 	// A control character makes net/url.Parse fail.
 	badURL := "http://example.com/\x7f"
 
@@ -183,20 +206,11 @@ func TestMalformedURLDoesNotHangAndMarksTerminal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = c.Stop() })
 
-	done := make(chan error, 1)
-	go func() { done <- c.Start(context.Background(), cfg.SeedURLs) }()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("Start returned error: %v", err)
-		}
-	case <-time.After(15 * time.Second):
-		t.Fatal("crawler hung on a malformed seed URL (row stuck in 'processing')")
+	if err := c.Start(context.Background(), cfg.SeedURLs); err == nil {
+		t.Fatal("malformed seed URL was accepted")
 	}
-
-	if got, _ := statusOf(t, store, badURL); got != "error" {
-		t.Errorf("malformed seed status = %q, want error (terminal)", got)
+	if _, exists := statusOf(t, store, badURL); exists {
+		t.Fatal("malformed seed URL was written before validation")
 	}
 }
 
@@ -245,6 +259,49 @@ func TestStaleProcessingRowDoesNotHangOnResume(t *testing.T) {
 	// The stale row must have been reset and then driven to a terminal state.
 	if got, _ := statusOf(t, store, deadURL); got == "processing" || got == "pending" {
 		t.Errorf("stale row status = %q, want a terminal state", got)
+	}
+}
+
+func TestDeniedQueuedURLIsSkippedBeforeAnyNetworkRequest(t *testing.T) {
+	var deniedHits atomic.Int32
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deniedHits.Add(1)
+		_, _ = w.Write([]byte("must not be contacted"))
+	}))
+	defer denied.Close()
+
+	store := newStore(t)
+	const root = "https://allowed.example/root"
+	if err := store.AddSeeds([]string{root}); err != nil {
+		t.Fatal(err)
+	}
+	rootItem, err := store.GetNextFromQueue()
+	if err != nil || rootItem == nil {
+		t.Fatalf("claim root: item=%v err=%v", rootItem, err)
+	}
+	if err := store.SavePageResult(rootItem.ID, &crawler.PageData{URL: root, HTTPHeaders: map[string]string{}, CrawledAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddToQueue([]string{denied.URL + "/page"}, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := baseCfg()
+	cfg.SeedURLs = nil
+	cfg.IgnoreRobotsTxt = false
+	c, err := crawler.NewCrawler(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Stop() }()
+	if err := c.Start(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := deniedHits.Load(); got != 0 {
+		t.Fatalf("denied origin received %d requests, want zero", got)
+	}
+	if got, _ := statusOf(t, store, denied.URL+"/page"); got != "skipped" {
+		t.Fatalf("denied queued URL status = %q, want skipped", got)
 	}
 }
 
