@@ -46,6 +46,10 @@ type HTTPClient struct {
 	// redirectPolicy decides whether a redirect target may be followed.
 	// Nil allows every target, bounded only by the hop limit.
 	redirectPolicy func(*url.URL) bool
+	// credentialPolicy is separate from URL authorization. It limits configured
+	// credentials and custom headers to origins explicitly supplied as seeds in
+	// the current invocation.
+	credentialPolicy func(*url.URL) bool
 }
 
 // HTTPMetrics contains performance metrics for an HTTP request
@@ -102,6 +106,13 @@ func (h *HTTPClient) SetRedirectPolicy(allow func(*url.URL) bool) {
 	h.redirectPolicy = allow
 }
 
+// SetCredentialPolicy installs the origin predicate for configured secret
+// headers. A nil policy preserves the standalone HTTPClient's historical
+// behavior; the crawler always installs a policy before starting workers.
+func (h *HTTPClient) SetCredentialPolicy(allow func(*url.URL) bool) {
+	h.credentialPolicy = allow
+}
+
 // checkRedirect gates redirect hops. It runs before the next request is sent,
 // so a rejected target is never contacted. On top of the hop limit it enforces
 // the redirect policy and drops credentials once the origin changes, so a
@@ -115,13 +126,21 @@ func (h *HTTPClient) checkRedirect(req *http.Request, via []*http.Request) error
 		return fmt.Errorf("%w: %s", ErrRedirectNotAllowed, req.URL.String())
 	}
 
-	// Compare against the originating request: credentials belong to the
-	// origin they were configured for and must not follow the crawler off it.
-	// Go's built-in redirect policy does not cover the configured API-key
-	// header or arbitrary custom headers, so every crawler credential is
-	// removed here at an explicit origin boundary.
-	if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
-		h.stripCredentialHeaders(req.Header)
+	// Credential removal is monotonic for the redirect chain. Once any hop has
+	// left the initial origin, a later A -> B -> A redirect must not restore the
+	// initial credentials when it returns to A.
+	if len(via) > 0 {
+		origin := via[0].URL
+		leftOrigin := !sameOrigin(origin, req.URL)
+		for _, previous := range via[1:] {
+			if !sameOrigin(origin, previous.URL) {
+				leftOrigin = true
+				break
+			}
+		}
+		if leftOrigin {
+			h.stripCredentialHeaders(req.Header)
+		}
 	}
 
 	return nil
@@ -129,7 +148,9 @@ func (h *HTTPClient) checkRedirect(req *http.Request, via []*http.Request) error
 
 // sameOrigin reports whether two URLs share a scheme and host (including port).
 func sameOrigin(a, b *url.URL) bool {
-	return a.Scheme == b.Scheme && a.Host == b.Host
+	aOrigin, aErr := originKey(a)
+	bOrigin, bErr := originKey(b)
+	return aErr == nil && bErr == nil && aOrigin == bOrigin
 }
 
 // stripCredentialHeaders removes every header that carries a secret.
@@ -227,6 +248,9 @@ func (h *HTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 	// Set custom headers
 	for name, value := range h.customHeaders {
 		req.Header.Set(name, value)
+	}
+	if h.credentialPolicy != nil && !h.credentialPolicy(req.URL) {
+		h.stripCredentialHeaders(req.Header)
 	}
 
 	// Setup performance tracking

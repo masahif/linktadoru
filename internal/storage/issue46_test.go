@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -232,9 +233,12 @@ func mustSaveResult(t *testing.T, s *SQLiteStorage, id int) {
 func TestMigratePagesAddDiscovered(t *testing.T) {
 	dbFile := filepath.Join(t.TempDir(), "legacy.db")
 
-	// Build a legacy database by stripping 'discovered' from the current schema.
+	// Build a legacy database by stripping both the 'discovered' status and the
+	// later ALTER-added depth column from the current schema.
 	legacySchema := strings.Replace(schemaSQL, ", 'discovered'", "", 1)
-	if legacySchema == schemaSQL {
+	legacySchema = strings.Replace(legacySchema, "    depth INTEGER,\n", "", 1)
+	legacySchema = strings.Replace(legacySchema, "CREATE INDEX IF NOT EXISTS idx_pages_status_depth_added_id ON pages(status, depth, added_at, id);\n", "", 1)
+	if legacySchema == schemaSQL || strings.Contains(legacySchema, "depth INTEGER") {
 		t.Fatal("failed to derive legacy schema; marker not found")
 	}
 
@@ -271,10 +275,20 @@ func TestMigratePagesAddDiscovered(t *testing.T) {
 	if err := legacy.InitSchema(); err != nil {
 		t.Fatalf("InitSchema (migration) failed: %v", err)
 	}
+	if err := legacy.InitSchema(); err != nil {
+		t.Fatalf("InitSchema (idempotent migration) failed: %v", err)
+	}
 
 	// Existing data preserved.
 	if got := mustStatus(t, legacy, "https://example.com/legacy"); got != "completed" {
 		t.Errorf("legacy row status = %q, want completed", got)
+	}
+	var migratedDepth sql.NullInt64
+	if err := legacy.db.QueryRow("SELECT depth FROM pages WHERE url = 'https://example.com/legacy'").Scan(&migratedDepth); err != nil {
+		t.Fatalf("depth column missing after migration: %v", err)
+	}
+	if migratedDepth.Valid {
+		t.Fatalf("legacy depth = %v, want NULL", migratedDepth)
 	}
 	// 'discovered' now accepted.
 	if _, err := legacy.db.Exec("INSERT INTO pages (url, status) VALUES ('https://example.com/now', 'discovered')"); err != nil {

@@ -266,29 +266,6 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("BoundedCrawlRequiresSeedsBeforeEmptyDBExit", func(t *testing.T) {
-		viper.Reset()
-
-		dbPath := filepath.Join(tempDir, "bounded-empty.db")
-		emptyStore, err := storage.NewSQLiteStorage(dbPath)
-		if err != nil {
-			t.Fatalf("Failed to create test database: %v", err)
-		}
-		_ = emptyStore.Close()
-
-		cmd := &cobra.Command{}
-		cmd.Flags().Bool("show-config", false, "")
-		cmd.Flags().String("database", dbPath, "")
-		cmd.Flags().Int("max-depth", 2, "")
-		_ = viper.BindPFlag("database_path", cmd.Flags().Lookup("database"))
-		_ = viper.BindPFlag("max_depth", cmd.Flags().Lookup("max-depth"))
-
-		err = runCrawler(cmd, []string{})
-		if err == nil || !strings.Contains(err.Error(), "--max-depth requires seed URLs") {
-			t.Fatalf("bounded empty resume error = %v, want seed requirement", err)
-		}
-	})
-
 	t.Run("NoURLsDBWithQueue", func(t *testing.T) {
 		// Reset viper for each subtest
 		viper.Reset()

@@ -571,10 +571,23 @@ func (s *SQLiteStorage) HasQueuedItems() (bool, error) {
 	return count > 0, nil
 }
 
-func (s *SQLiteStorage) HasAnyPages() (bool, error) {
+// HasResumableWork reports whether a seedless run has queued work or a
+// retryable failure that the post-drain retry pass can recover.
+func (s *SQLiteStorage) HasResumableWork() (bool, error) {
 	var found bool
-	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pages)`).Scan(&found); err != nil {
-		return false, fmt.Errorf("failed to check pages: %w", err)
+	err := s.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM pages
+			WHERE status IN ('pending', 'processing')
+			   OR (
+				status = 'error'
+				AND retry_count < ?
+				AND last_error_type IN `+retryableErrorTypes+`
+			)
+		)
+	`, crawler.MaxRetryAttempts).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("failed to check resumable work: %w", err)
 	}
 	return found, nil
 }
@@ -623,6 +636,29 @@ func validateDepthTracking(q depthQueryer, seedURLs []string) error {
 	return fmt.Errorf("database contains unfinished URL without discovery depth: %s; use a fresh database or explicitly supply that URL as a seed", url)
 }
 
+// GetDepthZeroURLs returns the persisted authorization roots. Terminal seeds
+// remain roots because a reused database accumulates explicit depth-zero rows.
+func (s *SQLiteStorage) GetDepthZeroURLs() ([]string, error) {
+	rows, err := s.db.Query(`SELECT url FROM pages WHERE depth = 0 ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load depth-zero URLs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var urls []string
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err != nil {
+			return nil, fmt.Errorf("failed to scan depth-zero URL: %w", err)
+		}
+		urls = append(urls, url)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate depth-zero URLs: %w", err)
+	}
+	return urls, nil
+}
+
 // retryableErrorTypes lists the last_error_type values eligible for retry.
 // These MUST match the strings the crawler writes for retryable failures:
 // 'network_error' covers transient transport failures and 'http_transient'
@@ -632,37 +668,6 @@ func validateDepthTracking(q depthQueryer, seedURLs []string) error {
 // and 'response_too_large' (deterministic — the page will exceed the limit
 // again).
 const retryableErrorTypes = `('network_error', 'http_transient')`
-
-// GetRetryablePages returns pages with error status that can be retried.
-func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
-	rows, err := s.db.Query(`
-		SELECT id, url, retry_count, last_error_type
-		FROM pages
-		WHERE status = 'error'
-		  AND retry_count < ?
-		  AND last_error_type IN `+retryableErrorTypes+`
-		ORDER BY retry_count ASC, added_at ASC
-	`, maxRetries)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get retryable pages: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var items []crawler.URLItem
-	for rows.Next() {
-		var item crawler.URLItem
-		var errorType string
-		var retryCount int
-		if err := rows.Scan(&item.ID, &item.URL, &retryCount, &errorType); err != nil {
-			return nil, fmt.Errorf("failed to scan retryable page: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate retryable pages: %w", err)
-	}
-	return items, nil
-}
 
 // RequeueErrorPages moves error status pages back to pending for retry
 func (s *SQLiteStorage) RequeueErrorPages(maxRetries int) (int, error) {

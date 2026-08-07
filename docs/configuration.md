@@ -20,14 +20,14 @@ This table is the authoritative reference for all options. Run `./linktadoru --h
 | request_timeout | `-t, --timeout` | `LT_REQUEST_TIMEOUT` | 30s | HTTP request timeout (Go duration) |
 | user_agent | `-u, --user-agent` | `LT_USER_AGENT` | LinkTadoru/1.0 | HTTP User-Agent header |
 | ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
-| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Allow crawling hosts other than the seed hosts |
+| follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Compatibility switch allowing every URL with an allowed scheme; excludes still win |
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
-| max_depth | `--max-depth` | `LT_MAX_DEPTH` | 0 | 0=unlimited; N>0 includes discovery depth N and temporarily requires explicit seeds plus an empty database |
+| max_depth | `--max-depth` | `LT_MAX_DEPTH` | 0 | Maximum first-discovery depth; 0=unlimited, seeds=0 |
 | max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes (10 MiB) |
 | database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
 | **URL Filtering** |
-| include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | URL patterns to include (regex) |
-| exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | URL patterns to exclude (regex) |
+| include_patterns | `--include-patterns` | `LT_INCLUDE_PATTERNS` | [] | Absolute full-URL regex ranges added to seed origins |
+| exclude_patterns | `--exclude-patterns` | `LT_EXCLUDE_PATTERNS` | [] | Substring regexes removed from the allowed URL set |
 | allowed_schemes | - | - | ["https://", "http://"] | Allowed URL schemes (config file only) |
 | **Authentication** |
 | auth.type | `--auth-type` | `LT_AUTH_TYPE` | "" | Authentication type: basic, bearer, api-key |
@@ -60,15 +60,15 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 follow_external_hosts: false # Stay on the seed hosts by default
 limit: 0                     # Stop after N pages (0 = unlimited)
-max_depth: 0                 # 0 = unlimited; N > 0 includes discovery depth N
+max_depth: 0                 # 0 = unlimited; positive N includes depth N
 max_response_size: 10485760  # Max response body size in bytes (10 MiB)
 
-# URL filtering (regex; double the backslashes in double-quoted YAML strings)
+# URL policy (Go regexp/RE2; single-quoted YAML keeps backslashes readable)
 include_patterns:
-  - "^https?://[^/]*httpbin\\.org/.*"
+  - '^https://search\.example/search(?:/.*)?(?:\?.*)?$'
 exclude_patterns:
-  - "\\.pdf$"
-  - "/admin/.*"
+  - '\.pdf$'
+  - '/admin/'
 
 # Custom HTTP headers
 headers:
@@ -81,6 +81,54 @@ database_path: "./linktadoru.db"
 # Logging (config file only, see the Logging section)
 log_level: "info"
 ```
+
+## URL Policy and Regular Expressions
+
+By default, a URL is allowed when its parsed origin (scheme, hostname, and
+effective port) exactly matches a persisted depth-0 seed origin. An
+`include_pattern` adds an absolute URL range, while an `exclude_pattern`
+subtracts from the resulting set. Excludes always win. The same decision is
+used for queued URLs, discovered links, redirects, and retries.
+
+Patterns use Go's standard `regexp` syntax (RE2):
+
+- `/` is an ordinary character and does not need escaping; patterns are not
+  JavaScript `/pattern/` literals.
+- `.` is a wildcard. Use `\.` for a literal dot in a hostname.
+- Includes are matched against the entire absolute URL. `^` and `$` are still
+  recommended for readability, but authorization does not depend on them.
+- Includes must identify an absolute URL range. Legacy relative includes such
+  as `/products/` fail at startup instead of silently changing meaning.
+- Excludes are substring matches, which is useful for `/private/` or query
+  parameter fragments.
+- Regex matching is case-sensitive and uses the stored absolute URL text;
+  unlike implicit-origin comparison, it does not lowercase the scheme or host.
+- Matching does not percent-decode URLs: `/ika/` does not match `/%69ka/`.
+- In YAML, single-quoted strings make backslashes easier to read.
+
+```yaml
+seed_urls:
+  - https://example.com/
+
+include_patterns:
+  # Add one trusted cross-origin subtree.
+  - '^https://hogehoge\.com/search(?:/.*)?(?:\?.*)?$'
+
+exclude_patterns:
+  - '/ika/'
+  - '[?&]page=[0-9]+(?:&|$)'
+```
+
+This allows `https://example.com/news/1` and
+`https://hogehoge.com/search/items?q=go`, but not
+`https://hogehoge.com/account` or an otherwise allowed URL containing
+`/ika/`. An include-only origin never receives authentication or configured
+custom headers. A broad include such as `^https?://.*$` has the same reach risk
+as `follow_external_hosts: true`.
+
+Before this change, includes narrowed an already host-limited set. Existing
+absolute cross-origin includes now actively add that range. Rewrite relative
+includes as absolute patterns (and/or excludes) before upgrading.
 
 ## Environment Variables
 
@@ -228,28 +276,11 @@ export LT_HEADER_X_API_VERSION="v1"
 
 ## Pattern Matching
 
-### Include Patterns
-Only URLs matching at least one include pattern will be crawled:
-
-```yaml
-include_patterns:
-  - "^https?://[^/]*httpbin\\.org/.*"     # Main domain
-  - "^https?://[^/]*\\.httpbin\\.org/.*"  # All subdomains
-  - ".*/products/.*"                      # Specific path
-```
-
-### Exclude Patterns
-URLs matching any exclude pattern will be skipped:
-
-```yaml
-exclude_patterns:
-  - "\\.pdf$"         # Skip PDFs
-  - "\\.jpg$"         # Skip images
-  - "/admin/.*"       # Skip admin section
-  - ".*\\?.*"         # Skip URLs with query strings
-```
-
-Invalid regexes are rejected at startup with a clear error message.
+`include_patterns` adds absolute full-URL ranges to the persisted seed-origin
+scope. `exclude_patterns` subtracts URLs from that combined scope and always
+wins. See [URL Policy and Regular Expressions](#url-policy-and-regular-expressions)
+for the matching rules, migration notes, and examples. Invalid patterns are
+rejected at startup.
 
 ## Performance Tuning
 

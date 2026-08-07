@@ -237,6 +237,55 @@ func TestSeedTransactionFailsBeforeMutatingWhenOtherLegacyWorkExists(t *testing.
 	}
 }
 
+func TestDepthZeroURLsAndResumableRetry(t *testing.T) {
+	store := newTempStorage(t)
+	if err := store.AddSeeds([]string{"https://example.com/root"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddToQueue([]string{"https://other.example/error"}, 1); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim root: item=%+v err=%v", item, err)
+	}
+	if err := store.SavePageResult(item.ID, &crawler.PageData{URL: item.URL, HTTPHeaders: map[string]string{}, CrawledAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	item, err = store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim error row: item=%+v err=%v", item, err)
+	}
+	if err := store.SavePageError(item.ID, "network_error", "temporary"); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, err := store.GetDepthZeroURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 1 || roots[0] != "https://example.com/root" {
+		t.Fatalf("roots = %v", roots)
+	}
+	hasWork, err := store.HasResumableWork()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasWork {
+		t.Fatal("retryable error was not resumable work")
+	}
+	if _, err := store.RequeueErrorPages(crawler.MaxRetryAttempts); err != nil {
+		t.Fatal(err)
+	}
+	item, err = store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim requeued error: item=%+v err=%v", item, err)
+	}
+	if item.Depth != 1 {
+		t.Fatalf("retry depth = %d, want 1", item.Depth)
+	}
+}
+
 func TestStaleProcessingCleanupPreservesDepthAndRetryCount(t *testing.T) {
 	store := newTempStorage(t)
 	const pageURL = "https://example.com/interrupted"

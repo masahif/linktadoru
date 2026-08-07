@@ -74,9 +74,9 @@ func init() {
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "HTTP request timeout")
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
-	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
+	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow all hosts with an allowed scheme (excludes still apply)")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
-	rootCmd.Flags().Int("max-depth", 0, "Maximum discovery depth (0=unlimited)")
+	rootCmd.Flags().Int("max-depth", 0, "Maximum first-discovery depth (0=unlimited, seeds=0)")
 	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
@@ -97,8 +97,8 @@ func init() {
 	rootCmd.Flags().StringSliceP("header", "H", []string{}, "Custom HTTP headers in 'Name: Value' format (use multiple times for multiple headers)")
 
 	// URL filtering flags
-	rootCmd.Flags().StringSlice("include-patterns", []string{}, "Regex patterns for URLs to include")
-	rootCmd.Flags().StringSlice("exclude-patterns", []string{}, "Regex patterns for URLs to exclude")
+	rootCmd.Flags().StringSlice("include-patterns", []string{}, "Absolute full-URL regex ranges to add")
+	rootCmd.Flags().StringSlice("exclude-patterns", []string{}, "Substring regex patterns to exclude")
 
 	// Database flags
 	rootCmd.Flags().StringP("database", "d", "./linktadoru.db", "Path to SQLite database file")
@@ -267,9 +267,6 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	if cfg.MaxDepth > 0 && len(cfg.SeedURLs) == 0 {
-		return fmt.Errorf("--max-depth requires seed URLs and a fresh database")
-	}
 
 	// Validate startup conditions: prevent running without URLs and without existing database
 	if len(cfg.SeedURLs) == 0 {
@@ -279,15 +276,14 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 				cfg.DatabasePath, os.Args[0])
 		}
 
-		// Database exists, but let's check if it has any queued items
+		// Database exists, but let's check if it has queued or retryable work.
 		// Create a temporary storage instance to check queue status
 		tempStorage, err := storage.NewSQLiteStorage(cfg.DatabasePath)
 		if err != nil {
 			return fmt.Errorf("failed to open database %s: %w", cfg.DatabasePath, err)
 		}
 
-		// Check if queue has any items (queued or processing)
-		hasWork, err := tempStorage.HasQueuedItems()
+		hasWork, err := tempStorage.HasResumableWork()
 		if err != nil {
 			if closeErr := tempStorage.Close(); closeErr != nil {
 				return fmt.Errorf("failed to check queue status: %w (close error: %v)", err, closeErr)
@@ -299,7 +295,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		}
 
 		if !hasWork {
-			fmt.Printf("No URLs provided and no queued items found in database %s\n", cfg.DatabasePath)
+			fmt.Printf("No URLs provided and no resumable work found in database %s\n", cfg.DatabasePath)
 			fmt.Printf("Nothing to crawl. Exiting.\n")
 			return nil
 		}

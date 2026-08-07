@@ -185,10 +185,6 @@ func (e *EnhancedMockStorage) SavePageSkipped(id int, reason, message string) er
 	return nil
 }
 
-func (e *EnhancedMockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
-	return nil, nil
-}
-
 func (e *EnhancedMockStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	return 0, nil
 }
@@ -240,10 +236,6 @@ func (e *ErrorMockStorage) GetNextFromQueue() (*URLItem, error) {
 
 func (e *ErrorMockStorage) SavePageSkipped(id int, reason, message string) error {
 	return nil
-}
-
-func (e *ErrorMockStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
-	return nil, nil
 }
 
 func (e *ErrorMockStorage) RequeueErrorPages(maxRetries int) (int, error) {
@@ -394,10 +386,6 @@ func (l *LimitTestStorage) SavePageSkipped(id int, reason, message string) error
 	return nil
 }
 
-func (l *LimitTestStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
-	return nil, nil
-}
-
 func (l *LimitTestStorage) RequeueErrorPages(maxRetries int) (int, error) {
 	return 0, nil
 }
@@ -445,17 +433,13 @@ func TestSameHostFiltering(t *testing.T) {
 		t.Fatalf("Failed to create crawler: %v", err)
 	}
 
-	// Check allowed hosts were set correctly
-	expectedHost := server1.URL
-	if len(crawler.allowedHosts) != 1 || crawler.allowedHosts[0] != expectedHost {
-		t.Errorf("Expected allowedHosts to contain [%s], got %v", expectedHost, crawler.allowedHosts)
+	if err := crawler.urlPolicy.setImplicitOrigins([]string{server1.URL}); err != nil {
+		t.Fatal(err)
 	}
-
-	// Test host filtering logic
-	if !crawler.isAllowedHost(server1.URL + "/page1") {
+	if !crawler.urlPolicy.allows(server1.URL + "/page1") {
 		t.Errorf("Same host URL should be allowed")
 	}
-	if crawler.isAllowedHost(server2.URL + "/external") {
+	if crawler.urlPolicy.allows(server2.URL + "/external") {
 		t.Errorf("External host URL should be blocked")
 	}
 }
@@ -495,10 +479,10 @@ func TestExternalHostsEnabled(t *testing.T) {
 	}
 
 	// Test that both internal and external hosts are allowed
-	if !crawler.isAllowedHost(server1.URL + "/page1") {
+	if !crawler.urlPolicy.allows(server1.URL + "/page1") {
 		t.Errorf("Same host URL should be allowed")
 	}
-	if !crawler.isAllowedHost(server2.URL + "/external") {
+	if !crawler.urlPolicy.allows(server2.URL + "/external") {
 		t.Errorf("External host URL should be allowed when follow_external_hosts is true")
 	}
 }
@@ -510,10 +494,6 @@ type HostFilteringTestStorage struct {
 
 func (h *HostFilteringTestStorage) SavePageSkipped(id int, reason, message string) error {
 	return nil
-}
-
-func (h *HostFilteringTestStorage) GetRetryablePages(maxRetries int) ([]URLItem, error) {
-	return nil, nil
 }
 
 func (h *HostFilteringTestStorage) RequeueErrorPages(maxRetries int) (int, error) {

@@ -8,15 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - `--seed-file` reads generated seed lists from a file or standard input.
-- Positive `max_depth` values persist discovery depth and admit links through
-  that depth without a global breadth-first barrier. Bounded crawls temporarily
-  require explicit seeds and a fresh database; `max_depth: 0` remains unlimited.
+- SQLite now persists first-discovery depth. `max_depth: N` accepts any
+  non-negative N, prioritizes shallow queued work without a breadth-first
+  barrier, and supports depth-preserving resume.
+- URL authorization now uses one policy: exact persisted seed origins plus
+  full-URL include regexes, minus exclude regexes. Includes can explicitly add
+  cross-origin ranges; relative legacy includes fail with a migration message.
 
 ### Changed
 - Re-supplying an existing URL as a seed re-fetches it at depth 0 and clears
-  stale observations. Normal duplicate discovery still does not re-fetch it.
+  stale observations. Normal duplicate discovery still does not re-fetch a
+  queued or terminal URL.
+- Runs without explicit seeds now drain resumable database work, including
+  bounded crawls, or exit successfully when no work remains.
+- Seed URLs containing userinfo are rejected; configure credentials separately.
 - Crawling stops before network access when a migrated database has unfinished
   rows with unknown depth. Supply those URLs as seeds or use a fresh database.
+- Existing absolute non-seed-origin includes are now active cross-origin
+  authorization under OR semantics. Review these patterns before upgrading.
+- Credentials and configured custom headers are sent only to origins supplied
+  as seeds in the current invocation, and never reappear after an A-B-A
+  cross-origin redirect chain.
+- Outgoing external links are retained as graph-only `discovered` rows even
+  when their URLs are not authorized for fetching.
+- In multi-seed crawls, links between persisted seed origins can now be fetched;
+  the old parent-host `internal` link gate no longer narrows the shared policy.
 
 ### Fixed
 - HTTP 408, 429, 500, 502, 503, and 504 responses are now retained as errors

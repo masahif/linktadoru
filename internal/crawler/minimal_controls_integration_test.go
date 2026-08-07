@@ -291,7 +291,7 @@ func TestPermanentHTTPStatusIsNotRetried(t *testing.T) {
 	}
 }
 
-func TestMaxDepthOneRejectsMissingSeeds(t *testing.T) {
+func TestMaxDepthOneEmptyResumeSucceeds(t *testing.T) {
 	store := newStore(t)
 	cfg := minimalConfig(nil, 1, 1)
 	c, err := crawler.NewCrawler(cfg, store)
@@ -299,24 +299,139 @@ func TestMaxDepthOneRejectsMissingSeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Stop() }()
-	if err := c.Start(context.Background(), nil); err == nil {
-		t.Fatal("max_depth=1 run without seeds was accepted")
+	if err := c.Start(context.Background(), nil); err != nil {
+		t.Fatalf("empty resume failed: %v", err)
 	}
 }
 
-func TestMaxDepthOneRejectsNonEmptyDatabase(t *testing.T) {
+func TestMaxDepthOneResumesPersistedDepthZeroQueue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = fmt.Fprint(w, "ok")
+	}))
+	defer server.Close()
+
 	store := newStore(t)
-	const seed = "https://example.com"
-	if err := store.AddToQueue([]string{seed}, 0); err != nil {
+	if err := store.AddToQueue([]string{server.URL}, 0); err != nil {
 		t.Fatal(err)
 	}
-	cfg := minimalConfig([]string{seed}, 1, 1)
+	cfg := minimalConfig(nil, 1, 1)
 	c, err := crawler.NewCrawler(cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Stop() }()
-	if err := c.Start(context.Background(), cfg.SeedURLs); err == nil {
-		t.Fatal("max_depth=1 accepted a non-empty database")
+	if err := c.Start(context.Background(), nil); err != nil {
+		t.Fatalf("seedless resume failed: %v", err)
+	}
+	if got, _ := statusOf(t, store, server.URL); got != "completed" {
+		t.Fatalf("resumed status = %q, want completed", got)
+	}
+}
+
+func TestSeedlessResumeRetriesPersistedErrorAtItsOriginalDepth(t *testing.T) {
+	var childRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/child" {
+			childRequests.Add(1)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = fmt.Fprint(w, "ok")
+	}))
+	defer server.Close()
+
+	store := newStore(t)
+	root := server.URL + "/root"
+	child := server.URL + "/child"
+	if err := store.AddSeeds([]string{root}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim root: item=%+v err=%v", item, err)
+	}
+	if err := store.SavePageResult(item.ID, &crawler.PageData{
+		URL:         root,
+		HTTPHeaders: map[string]string{},
+		CrawledAt:   time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddToQueue([]string{child}, 1); err != nil {
+		t.Fatal(err)
+	}
+	item, err = store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim child: item=%+v err=%v", item, err)
+	}
+	if err := store.SavePageError(item.ID, "network_error", "temporary"); err != nil {
+		t.Fatal(err)
+	}
+
+	startCrawler(t, minimalConfig(nil, 1, 1), store)
+	if got := childRequests.Load(); got != 1 {
+		t.Fatalf("retried child requests = %d, want 1", got)
+	}
+	if got, _ := statusOf(t, store, child); got != "completed" {
+		t.Fatalf("retried child status = %q, want completed", got)
+	}
+}
+
+func TestAuthenticatedSeedlessResumeFailsClosed(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+
+	store := newStore(t)
+	if err := store.AddSeeds([]string{server.URL}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := minimalConfig(nil, 1, 1)
+	cfg.Headers = []string{"X-Secret: value"}
+	c, err := crawler.NewCrawler(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Stop() }()
+	if err := c.Start(context.Background(), nil); err == nil {
+		t.Fatal("authenticated seedless resume was accepted")
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("seedless authenticated resume made %d requests", got)
+	}
+}
+
+func TestResumeDrainsAlreadyAdmittedRowsBeyondCurrentBound(t *testing.T) {
+	var deepRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/deep" {
+			deepRequests.Add(1)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = fmt.Fprint(w, "ok")
+	}))
+	defer server.Close()
+
+	store := newStore(t)
+	root := server.URL + "/root"
+	if err := store.AddSeeds([]string{root}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.GetNextFromQueue()
+	if err != nil || item == nil {
+		t.Fatalf("claim root: item=%+v err=%v", item, err)
+	}
+	if err := store.SavePageResult(item.ID, &crawler.PageData{URL: root, HTTPHeaders: map[string]string{}, CrawledAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddToQueue([]string{server.URL + "/deep"}, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	startCrawler(t, minimalConfig(nil, 1, 1), store)
+	if got := deepRequests.Load(); got != 1 {
+		t.Fatalf("already admitted depth-2 row fetched %d times, want 1", got)
 	}
 }
