@@ -99,6 +99,7 @@ jobs:
       run: |
         VERSION="${{ steps.version.outputs.version }}"
         awk -v heading="## [$VERSION]" '
+          { sub(/\r$/, "") }
           $0 == heading || index($0, heading " - ") == 1 {
             found = 1
             next
@@ -125,30 +126,30 @@ jobs:
 
         Choose the appropriate binary for your platform:
 
-        - **Linux x86_64**: \`linktadoru-linux-amd64\`
-        - **Linux ARM64**: \`linktadoru-linux-arm64\`
-        - **macOS ARM64**: \`linktadoru-darwin-arm64\`
-        - **Windows x86_64**: \`linktadoru-windows-amd64.exe\`
+        - **Linux x86_64**: `linktadoru-linux-amd64`
+        - **Linux ARM64**: `linktadoru-linux-arm64`
+        - **macOS ARM64**: `linktadoru-darwin-arm64`
+        - **Windows x86_64**: `linktadoru-windows-amd64.exe`
 
         ## Installation
 
         ### Linux / macOS
-        \`\`\`bash
+        ```bash
         # Download and make executable
         chmod +x linktadoru-linux-amd64
         ./linktadoru-linux-amd64 --version
-        \`\`\`
+        ```
 
         ### Windows
-        \`\`\`powershell
+        ```powershell
         # Test the binary
-        .\\linktadoru-windows-amd64.exe --version
-        \`\`\`
+        .\linktadoru-windows-amd64.exe --version
+        ```
 
         ### Using Go
-        \`\`\`bash
+        ```bash
         go install github.com/masahif/linktadoru/cmd/crawler@${{ steps.version.outputs.tag }}
-        \`\`\`
+        ```
         EOF
         } > release_notes.md
 

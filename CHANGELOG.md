@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **URL include semantics changed from filtering to authorization.** Persisted
   depth-0 seed origins are always allowed; `include_patterns` now add absolute
   full-URL ranges, and `exclude_patterns` subtract from the combined set.
-  Relative includes such as `/products/` are rejected at startup. During
+  Includes are matched against the entire absolute URL instead of as
+  substrings, so patterns that relied on partial matches must state their full
+  range. Relative includes such as `/products/` are rejected at startup. During
   discovered-link admission, existing absolute includes for non-seed origins
-  were previously inert behind the seed-host check; they now actively authorize
-  those ranges.
+  were previously inert behind the seed-host check; they now actively
+  authorize those ranges.
 - **`follow_external_hosts: true` now performs external fetches.** In v0.9.2,
   the parent-host link gate left discovered external URLs graph-only even when
   this option was enabled. It now permits crawling every URL with an allowed
@@ -38,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   observation. Normal duplicate discovery still does not re-fetch terminal
   rows. Command-line URL arguments and `--seed-file` also take precedence over
   `seed_urls` loaded from configuration.
+- **All explicit seeds are retained even when their count exceeds `--limit`.**
+  v0.9.2 discarded seeds beyond the current limit during initialization. They
+  are now queued before workers start, so seeds not reached in the current run
+  remain pending for a later resume.
 - **Credential trust is invocation-specific.** Authentication and configured
   custom headers are sent only to origins supplied as seeds in the current
   invocation. A seedless resume with credentials configured fails closed and
