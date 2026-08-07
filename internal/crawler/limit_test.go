@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -17,7 +18,34 @@ type seedRecordingStorage struct {
 	queued []string
 }
 
-func (s *seedRecordingStorage) AddToQueue(urls []string) error {
+type startupFailureStorage struct {
+	MockStorage
+	cleanupErr error
+	depthErr   error
+	seedsAdded bool
+	claimsMade bool
+}
+
+func (s *startupFailureStorage) CleanupStaleProcessing(time.Duration) error {
+	return s.cleanupErr
+}
+
+func (s *startupFailureStorage) ValidateDepthTracking([]string) error {
+	return s.depthErr
+}
+
+func (s *startupFailureStorage) AddSeeds([]string) error {
+	s.seedsAdded = true
+	return nil
+}
+
+func (s *startupFailureStorage) GetNextFromQueue() (*URLItem, error) {
+	s.claimsMade = true
+	return nil, nil
+}
+
+func (s *seedRecordingStorage) AddSeeds(urls []string) error {
+	_ = s.MockStorage.AddSeeds(urls)
 	s.queued = append(s.queued, urls...)
 	return nil
 }
@@ -38,7 +66,11 @@ func (m *MockStorage) Close() error {
 	return nil
 }
 
-func (m *MockStorage) AddToQueue(urls []string) error {
+func (m *MockStorage) AddSeeds(urls []string) error {
+	return nil
+}
+
+func (m *MockStorage) AddToQueue(urls []string, depth int) error {
 	return nil
 }
 
@@ -88,6 +120,10 @@ func (m *MockStorage) HasQueuedItems() (bool, error) {
 
 func (m *MockStorage) HasAnyPages() (bool, error) {
 	return false, nil
+}
+
+func (m *MockStorage) ValidateDepthTracking(seedURLs []string) error {
+	return nil
 }
 
 func (m *MockStorage) SavePageSkipped(id int, reason, message string) error {
@@ -155,6 +191,36 @@ func TestLimitDoesNotDiscardExplicitSeeds(t *testing.T) {
 	}
 	if !reflect.DeepEqual(store.queued, seeds) {
 		t.Fatalf("queued seeds = %q, want all explicit seeds %q", store.queued, seeds)
+	}
+}
+
+func TestStartupValidationFailsBeforeSeedMutationOrWorkers(t *testing.T) {
+	tests := []struct {
+		name       string
+		cleanupErr error
+		depthErr   error
+	}{
+		{"cleanup", errors.New("cleanup failed"), nil},
+		{"legacy depth", nil, errors.New("unknown depth")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &startupFailureStorage{cleanupErr: tt.cleanupErr, depthErr: tt.depthErr}
+			cfg := config.DefaultConfig()
+			cfg.SeedURLs = []string{"https://example.com/"}
+			cfg.IgnoreRobotsTxt = true
+			crawler, err := NewCrawler(cfg, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = crawler.Stop() }()
+			if err := crawler.Start(context.Background(), cfg.SeedURLs); err == nil {
+				t.Fatal("startup failure was ignored")
+			}
+			if store.seedsAdded || store.claimsMade {
+				t.Fatalf("startup continued: seedsAdded=%v claimsMade=%v", store.seedsAdded, store.claimsMade)
+			}
+		})
 	}
 }
 

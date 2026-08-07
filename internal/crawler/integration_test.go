@@ -139,7 +139,12 @@ type EnhancedMockStorage struct {
 	currentID            int
 }
 
-func (e *EnhancedMockStorage) AddToQueue(urls []string) error {
+func (e *EnhancedMockStorage) AddSeeds(urls []string) error {
+	_ = e.MockStorage.AddSeeds(urls)
+	return e.AddToQueue(urls, 0)
+}
+
+func (e *EnhancedMockStorage) AddToQueue(urls []string, depth int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.addToQueueCalled = true
@@ -148,8 +153,9 @@ func (e *EnhancedMockStorage) AddToQueue(urls []string) error {
 	for _, url := range urls {
 		e.currentID++
 		e.items = append(e.items, &URLItem{
-			ID:  e.currentID,
-			URL: url,
+			ID:    e.currentID,
+			URL:   url,
+			Depth: depth,
 		})
 	}
 	return nil
@@ -338,7 +344,7 @@ func TestLimitReached(t *testing.T) {
 
 	// Mock storage that provides items
 	store := &LimitTestStorage{items: make([]*URLItem, 0)}
-	_ = store.AddToQueue([]string{"http://example.test/1", "http://example.test/2", "http://example.test/3"})
+	_ = store.AddToQueue([]string{"http://example.test/1", "http://example.test/2", "http://example.test/3"}, 0)
 
 	crawler, err := NewCrawler(config, store)
 	if err != nil {
@@ -362,10 +368,15 @@ type LimitTestStorage struct {
 	id    int
 }
 
-func (l *LimitTestStorage) AddToQueue(urls []string) error {
+func (l *LimitTestStorage) AddSeeds(urls []string) error {
+	_ = l.MockStorage.AddSeeds(urls)
+	return l.AddToQueue(urls, 0)
+}
+
+func (l *LimitTestStorage) AddToQueue(urls []string, depth int) error {
 	for _, url := range urls {
 		l.id++
-		l.items = append(l.items, &URLItem{ID: l.id, URL: url})
+		l.items = append(l.items, &URLItem{ID: l.id, URL: url, Depth: depth})
 	}
 	return nil
 }

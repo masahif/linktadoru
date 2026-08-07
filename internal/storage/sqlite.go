@@ -81,6 +81,9 @@ func (s *SQLiteStorage) InitSchema() error {
 	if err := s.migratePagesAddDiscovered(); err != nil {
 		return fmt.Errorf("failed to migrate pages table: %w", err)
 	}
+	if err := s.migratePagesAddDepth(); err != nil {
+		return fmt.Errorf("failed to migrate pages depth: %w", err)
+	}
 
 	// Create schema (idempotent). After a migration this also recreates the
 	// indexes and views that the table rebuild dropped.
@@ -96,25 +99,88 @@ func (s *SQLiteStorage) Close() error {
 	return s.db.Close()
 }
 
-// AddToQueue queues URLs for crawling by setting their status to 'pending'.
-//
-// It is an upsert that owns the "promote to pending" responsibility:
-//   - a brand new URL is inserted with status='pending'
-//   - a URL already known only as a link-graph node ('discovered') is promoted
-//     to 'pending' so it gets crawled
-//   - URLs already 'pending'/'processing'/'completed'/'skipped'/'error' are left
-//     untouched (no re-queue; retries are handled by RequeueErrorPages)
-//
-// Callers are expected to have applied include/exclude filtering before calling
-// this; that is what makes the patterns take effect (see processNewURLs).
-//
-// On promotion, added_at is refreshed to the enqueue time so the URL joins the
-// tail of the added_at-ordered queue. This is intentional: it preserves
-// breadth-first crawl order (a node discovered earlier but only now selected for
-// crawling is queued at the moment of selection, not its discovery time).
-func (s *SQLiteStorage) AddToQueue(urls []string) error {
+// AddSeeds queues explicit operator-supplied seeds at depth zero. Existing rows
+// are deliberately refreshed regardless of status; supplying a seed again is
+// an explicit request to fetch it again. A seed that is already pending keeps
+// its original queue timestamp so repeatedly supplying the same list with a
+// fetch limit cannot starve its unprocessed tail. The transaction rechecks
+// legacy depth state before resetting any prior observations.
+func (s *SQLiteStorage) AddSeeds(urls []string) error {
 	if len(urls) == 0 {
 		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin seed transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := validateDepthTracking(tx, urls); err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO pages (url, status, added_at, depth)
+		VALUES (?, 'pending', ?, 0)
+		ON CONFLICT(url) DO UPDATE SET
+			status = 'pending',
+			added_at = CASE
+				WHEN pages.status = 'pending' THEN pages.added_at
+				ELSE excluded.added_at
+			END,
+			processing_started_at = NULL,
+			depth = 0,
+			status_code = NULL,
+			title = NULL,
+			meta_description = NULL,
+			meta_robots = NULL,
+			canonical_url = NULL,
+			content_hash = NULL,
+			ttfb_ms = NULL,
+			download_time_ms = NULL,
+			response_size_bytes = NULL,
+			response_http_headers = NULL,
+			crawled_at = NULL,
+			retry_count = 0,
+			last_error_type = NULL,
+			last_error_message = NULL
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare seed statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := sqlTime(time.Now())
+	for _, url := range urls {
+		if _, err := stmt.Exec(url, now); err != nil {
+			return fmt.Errorf("failed to add seed %s: %w", url, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit seed transaction: %w", err)
+	}
+	return nil
+}
+
+// AddToQueue queues URLs for crawling at their first admitted discovery depth.
+//
+// It is an upsert that owns the "promote to pending" responsibility:
+//   - a brand new URL is inserted with status='pending' and the supplied depth
+//   - a URL already known only as a link-graph node ('discovered') is promoted
+//     to 'pending' at the supplied depth so it gets crawled
+//   - URLs already 'pending'/'processing'/'completed'/'skipped'/'error' are left
+//     untouched, including their original depth
+//
+// On promotion, added_at is refreshed to the enqueue time so the URL joins the
+// tail of the added_at-ordered queue at the moment it becomes crawlable.
+func (s *SQLiteStorage) AddToQueue(urls []string, depth int) error {
+	if len(urls) == 0 {
+		return nil
+	}
+	if depth < 0 {
+		return fmt.Errorf("queue depth must be non-negative")
 	}
 
 	tx, err := s.db.Begin()
@@ -124,11 +190,12 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO pages (url, status, added_at)
-		VALUES (?, 'pending', ?)
+		INSERT INTO pages (url, status, added_at, depth)
+		VALUES (?, 'pending', ?, ?)
 		ON CONFLICT(url) DO UPDATE SET
 			status = 'pending',
-			added_at = excluded.added_at
+			added_at = excluded.added_at,
+			depth = excluded.depth
 		WHERE pages.status = 'discovered'
 	`)
 	if err != nil {
@@ -143,7 +210,7 @@ func (s *SQLiteStorage) AddToQueue(urls []string) error {
 
 	now := sqlTime(time.Now())
 	for _, url := range urls {
-		if _, err := stmt.Exec(url, now); err != nil {
+		if _, err := stmt.Exec(url, now, depth); err != nil {
 			return fmt.Errorf("failed to insert URL %s: %w", url, err)
 		}
 	}
@@ -161,11 +228,11 @@ func (s *SQLiteStorage) GetNextFromQueue() (*crawler.URLItem, error) {
 		WHERE id = (
 			SELECT id FROM pages 
 			WHERE status = 'pending' 
-			ORDER BY added_at ASC 
+			ORDER BY depth ASC, added_at ASC, id ASC
 			LIMIT 1
 		) AND status = 'pending'
-		RETURNING id, url
-	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL)
+		RETURNING id, url, depth
+	`, sqlTime(time.Now())).Scan(&item.ID, &item.URL, &item.Depth)
 
 	if err == sql.ErrNoRows {
 		return nil, nil // No items in queue
@@ -512,6 +579,50 @@ func (s *SQLiteStorage) HasAnyPages() (bool, error) {
 	return found, nil
 }
 
+type depthQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// ValidateDepthTracking rejects unfinished rows whose historical admission
+// depth is unknown. Explicit seeds are the sole exception because AddSeeds can
+// establish those named rows as depth-zero roots in the current invocation.
+func (s *SQLiteStorage) ValidateDepthTracking(seedURLs []string) error {
+	return validateDepthTracking(s.db, seedURLs)
+}
+
+func validateDepthTracking(q depthQueryer, seedURLs []string) error {
+	seedJSON, err := json.Marshal(seedURLs)
+	if err != nil {
+		return fmt.Errorf("failed to encode seed URLs for depth validation: %w", err)
+	}
+
+	var url string
+	err = q.QueryRow(`
+		SELECT pages.url
+		FROM pages
+		WHERE pages.depth IS NULL
+		  AND (
+			pages.status IN ('pending', 'processing')
+			OR (
+				pages.status = 'error'
+				AND pages.retry_count < ?
+				AND pages.last_error_type IN `+retryableErrorTypes+`
+			)
+		  )
+		  AND NOT EXISTS (
+			SELECT 1 FROM json_each(?) AS seed WHERE seed.value = pages.url
+		  )
+		LIMIT 1
+	`, crawler.MaxRetryAttempts, string(seedJSON)).Scan(&url)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to validate discovery depth: %w", err)
+	}
+	return fmt.Errorf("database contains unfinished URL without discovery depth: %s; use a fresh database or explicitly supply that URL as a seed", url)
+}
+
 // retryableErrorTypes lists the last_error_type values eligible for retry.
 // These MUST match the strings the crawler writes for retryable failures:
 // 'network_error' covers transient transport failures and 'http_transient'
@@ -522,7 +633,7 @@ func (s *SQLiteStorage) HasAnyPages() (bool, error) {
 // again).
 const retryableErrorTypes = `('network_error', 'http_transient')`
 
-// GetRetryablePages returns pages with error status that can be retried
+// GetRetryablePages returns pages with error status that can be retried.
 func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, error) {
 	rows, err := s.db.Query(`
 		SELECT id, url, retry_count, last_error_type
@@ -547,11 +658,9 @@ func (s *SQLiteStorage) GetRetryablePages(maxRetries int) ([]crawler.URLItem, er
 		}
 		items = append(items, item)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate retryable pages: %w", err)
 	}
-
 	return items, nil
 }
 
@@ -632,15 +741,15 @@ func (s *SQLiteStorage) SetMeta(key, value string) error {
 	return nil
 }
 
-// GetURLStatus checks if a URL exists and returns its status
+// GetURLStatus checks if a URL exists and returns its status. It is kept as a
+// narrow inspection helper for storage and end-to-end tests; queue admission no
+// longer uses it as a pre-check.
 func (s *SQLiteStorage) GetURLStatus(url string) (status string, exists bool) {
 	err := s.db.QueryRow("SELECT status FROM pages WHERE url = ?", url).Scan(&status)
 	if err == sql.ErrNoRows {
 		return "", false
 	}
 	if err != nil {
-		// A real DB failure must not pass silently as "URL not found" — the
-		// caller would then re-queue a URL that may already be tracked.
 		slog.Error("Failed to query URL status", "url", url, "error", err)
 		return "", false
 	}

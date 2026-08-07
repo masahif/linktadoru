@@ -96,7 +96,7 @@ func TestAddToQueuePromotesOnlyDiscovered(t *testing.T) {
 	t.Run("new URL becomes pending", func(t *testing.T) {
 		store := newTempStorage(t)
 		url := "https://example.com/new"
-		if err := store.AddToQueue([]string{url}); err != nil {
+		if err := store.AddToQueue([]string{url}, 0); err != nil {
 			t.Fatalf("AddToQueue: %v", err)
 		}
 		if got := mustStatus(t, store, url); got != "pending" {
@@ -115,7 +115,7 @@ func TestAddToQueuePromotesOnlyDiscovered(t *testing.T) {
 		if got := mustStatus(t, store, url); got != "discovered" {
 			t.Fatalf("precondition status = %q, want discovered", got)
 		}
-		if err := store.AddToQueue([]string{url}); err != nil {
+		if err := store.AddToQueue([]string{url}, 0); err != nil {
 			t.Fatalf("AddToQueue: %v", err)
 		}
 		if got := mustStatus(t, store, url); got != "pending" {
@@ -161,7 +161,7 @@ func TestAddToQueuePromotesOnlyDiscovered(t *testing.T) {
 		t.Run(tc.name+" is left untouched", func(t *testing.T) {
 			store := newTempStorage(t)
 			url := "https://example.com/" + tc.name
-			if err := store.AddToQueue([]string{url}); err != nil {
+			if err := store.AddToQueue([]string{url}, 0); err != nil {
 				t.Fatalf("AddToQueue: %v", err)
 			}
 			item, err := store.GetNextFromQueue() // pending -> processing
@@ -174,7 +174,7 @@ func TestAddToQueuePromotesOnlyDiscovered(t *testing.T) {
 			}
 
 			// Re-queueing must NOT change a non-discovered row.
-			if err := store.AddToQueue([]string{url}); err != nil {
+			if err := store.AddToQueue([]string{url}, 0); err != nil {
 				t.Fatalf("AddToQueue (re): %v", err)
 			}
 			if got := mustStatus(t, store, url); got != tc.expect {

@@ -16,6 +16,12 @@ import (
 // pagesBaseColumns are the non-generated columns of the pages table, in a stable
 // order. Generated columns (content_type, content_length, last_modified, server,
 // content_encoding, x_cache) are derived and must NOT be copied explicitly.
+//
+// This list deliberately remains the pre-depth set. The discovered-status
+// rebuild runs before migratePagesAddDepth, so selecting depth from a legacy
+// table here would fail. Before adding another rebuild migration, replace this
+// fixed list with the intersection of source and target columns; otherwise an
+// ALTER-added depth value would be silently reset to NULL by that future rebuild.
 const pagesBaseColumns = "id, url, status, added_at, processing_started_at, " +
 	"status_code, title, meta_description, meta_robots, canonical_url, " +
 	"content_hash, ttfb_ms, download_time_ms, response_size_bytes, " +
@@ -97,6 +103,27 @@ func (s *SQLiteStorage) migratePagesAddDiscovered() error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit pages migration: %w", err)
+	}
+	return nil
+}
+
+// migratePagesAddDepth adds the nullable discovery depth after any legacy
+// status-table rebuild. Existing rows remain NULL because their historical
+// admission path cannot be inferred safely.
+func (s *SQLiteStorage) migratePagesAddDepth() error {
+	var tableExists, depthExists bool
+	if err := s.db.QueryRow(`
+		SELECT
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pages'),
+			EXISTS(SELECT 1 FROM pragma_table_info('pages') WHERE name = 'depth')
+	`).Scan(&tableExists, &depthExists); err != nil {
+		return fmt.Errorf("failed to inspect pages schema: %w", err)
+	}
+	if !tableExists || depthExists {
+		return nil
+	}
+	if _, err := s.db.Exec(`ALTER TABLE pages ADD COLUMN depth INTEGER`); err != nil {
+		return fmt.Errorf("failed to add pages.depth: %w", err)
 	}
 	return nil
 }

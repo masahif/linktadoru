@@ -8,9 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - `--seed-file` reads generated seed lists from a file or standard input.
-- `max_depth: 1` crawls each seed and its direct internal links without a
-  global breadth-first barrier; the initial implementation requires a fresh
-  database. `max_depth: 0` preserves the existing unlimited crawl.
+- Positive `max_depth` values persist discovery depth and admit links through
+  that depth without a global breadth-first barrier. Bounded crawls temporarily
+  require explicit seeds and a fresh database; `max_depth: 0` remains unlimited.
+
+### Changed
+- Re-supplying an existing URL as a seed re-fetches it at depth 0 and clears
+  stale observations. Normal duplicate discovery still does not re-fetch it.
+- Crawling stops before network access when a migrated database has unfinished
+  rows with unknown depth. Supply those URLs as seeds or use a fresh database.
 
 ### Fixed
 - HTTP 408, 429, 500, 502, 503, and 504 responses are now retained as errors

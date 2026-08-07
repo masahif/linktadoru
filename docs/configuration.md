@@ -22,7 +22,7 @@ This table is the authoritative reference for all options. Run `./linktadoru --h
 | ignore_robots_txt | `--ignore-robots-txt` | `LT_IGNORE_ROBOTS_TXT` | false | Ignore robots.txt rules |
 | follow_external_hosts | `--follow-external-hosts` | `LT_FOLLOW_EXTERNAL_HOSTS` | false | Allow crawling hosts other than the seed hosts |
 | limit | `-l, --limit` | `LT_LIMIT` | 0 | Maximum pages to crawl (0=unlimited) |
-| max_depth | `--max-depth` | `LT_MAX_DEPTH` | 0 | 0=unlimited; 1=seeds plus direct links and requires an empty database |
+| max_depth | `--max-depth` | `LT_MAX_DEPTH` | 0 | 0=unlimited; N>0 includes discovery depth N and temporarily requires explicit seeds plus an empty database |
 | max_response_size | `--max-response-size` | `LT_MAX_RESPONSE_SIZE` | 10485760 | Max response body size in bytes (10 MiB) |
 | database_path | `-d, --database` | `LT_DATABASE_PATH` | ./linktadoru.db | SQLite database file path |
 | **URL Filtering** |
@@ -60,7 +60,7 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 follow_external_hosts: false # Stay on the seed hosts by default
 limit: 0                     # Stop after N pages (0 = unlimited)
-max_depth: 0                 # 0 = unlimited, 1 = seeds plus direct links
+max_depth: 0                 # 0 = unlimited; N > 0 includes discovery depth N
 max_response_size: 10485760  # Max response body size in bytes (10 MiB)
 
 # URL filtering (regex; double the backslashes in double-quoted YAML strings)

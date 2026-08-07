@@ -25,7 +25,6 @@ type DefaultCrawler struct {
 	rateLimiter  *RateLimiter
 	robotsParser *RobotsParser
 	allowedHosts []string // Hosts allowed for crawling (from seed URLs)
-	seedURLs     map[string]struct{}
 
 	// Include/exclude patterns compiled once at construction. Compiling here
 	// (a) rejects an invalid pattern at startup instead of silently never
@@ -223,16 +222,16 @@ func (c *DefaultCrawler) isAllowedScheme(targetURL string) bool {
 func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
-	if c.config.MaxDepth == 1 {
+	if c.config.MaxDepth > 0 {
 		if len(seedURLs) == 0 {
-			return fmt.Errorf("--max-depth=1 requires seed URLs and a fresh database")
+			return fmt.Errorf("--max-depth requires seed URLs and a fresh database")
 		}
 		hasPages, err := c.storage.HasAnyPages()
 		if err != nil {
-			return fmt.Errorf("failed to inspect database before one-hop crawl: %w", err)
+			return fmt.Errorf("failed to inspect database before bounded crawl: %w", err)
 		}
 		if hasPages {
-			return fmt.Errorf("--max-depth=1 requires a fresh database")
+			return fmt.Errorf("--max-depth requires a fresh database")
 		}
 	}
 
@@ -243,20 +242,17 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 	// shouldExitOnEmptyQueue from ever firing and hang every worker (issue #46
 	// review follow-up). Passing 0 treats all current 'processing' rows as stale.
 	if err := c.storage.CleanupStaleProcessing(0); err != nil {
-		slog.Error("Failed to reset stale processing rows", "error", err)
+		return fmt.Errorf("failed to reset stale processing rows: %w", err)
 	}
-	if c.config.MaxDepth == 1 {
-		c.seedURLs = make(map[string]struct{}, len(seedURLs))
-		for _, seedURL := range seedURLs {
-			c.seedURLs[seedURL] = struct{}{}
-		}
+	if err := c.storage.ValidateDepthTracking(seedURLs); err != nil {
+		return err
 	}
 
 	if len(seedURLs) > 0 {
 		slog.Info("Starting crawler", "seed_urls", len(seedURLs))
 
 		// Step 1: Add seed URLs to queue first (before starting workers)
-		err := c.storage.AddToQueue(seedURLs)
+		err := c.storage.AddSeeds(seedURLs)
 		if err != nil {
 			return fmt.Errorf("failed to add seed URLs to queue: %w", err)
 		}
@@ -307,10 +303,8 @@ func (c *DefaultCrawler) Start(ctx context.Context, seedURLs []string) error {
 
 // performRetries handles retry logic for error status pages
 func (c *DefaultCrawler) performRetries() error {
-	const maxRetries = 3
-
 	for c.ctx.Err() == nil {
-		requeued, err := c.storage.RequeueErrorPages(maxRetries)
+		requeued, err := c.storage.RequeueErrorPages(MaxRetryAttempts)
 		if err != nil {
 			return fmt.Errorf("failed to requeue error pages: %w", err)
 		}
@@ -533,7 +527,7 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 	if err := c.storage.SaveLinks(result.Links); err != nil {
 		slog.Error("Worker failed to save links", "worker_id", id, "url", item.URL, "error", err)
 	}
-	c.processNewURLs(id, result.Links, item.URL)
+	c.processNewURLs(id, result.Links, item)
 
 	// Move this page out of 'processing' to a terminal state.
 	if result.Page != nil {
@@ -582,11 +576,10 @@ func (c *DefaultCrawler) handleProcessingResult(id int, item *URLItem, result *P
 }
 
 // processNewURLs collects and queues new URLs from links
-func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL string) {
-	if c.config.MaxDepth == 1 {
-		if _, isSeed := c.seedURLs[sourceURL]; !isSeed {
-			return
-		}
+func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, parent *URLItem) {
+	childDepth := parent.Depth + 1
+	if c.config.MaxDepth > 0 && childDepth > c.config.MaxDepth {
+		return
 	}
 
 	var newURLs []string
@@ -594,17 +587,11 @@ func (c *DefaultCrawler) processNewURLs(id int, links []*LinkData, sourceURL str
 		if link.LinkType != "internal" || !c.shouldCrawlURL(link.TargetURL) {
 			continue
 		}
-		// Queue the URL when it is brand new, or when it currently exists only as
-		// a 'discovered' link-graph node (created by SaveLinks). AddToQueue inserts
-		// or promotes it to 'pending'. URLs already pending/processing/completed/
-		// skipped/error are left untouched.
-		if status, exists := c.storage.GetURLStatus(link.TargetURL); !exists || status == "discovered" {
-			newURLs = append(newURLs, link.TargetURL)
-		}
+		newURLs = append(newURLs, link.TargetURL)
 	}
 
 	if len(newURLs) > 0 {
-		if err := c.storage.AddToQueue(newURLs); err != nil {
+		if err := c.storage.AddToQueue(newURLs, childDepth); err != nil {
 			slog.Error("Worker failed to add URLs to queue", "worker_id", id, "error", err)
 		}
 	}

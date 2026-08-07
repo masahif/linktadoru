@@ -60,7 +60,7 @@ type CrawlConfig struct {
 	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
 	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
 	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
-	MaxDepth            int           `mapstructure:"max_depth" yaml:"max_depth"`                         // 0 = unlimited, 1 = seeds plus direct links
+	MaxDepth            int           `mapstructure:"max_depth" yaml:"max_depth"`                         // 0 = unlimited; positive values include that discovery depth
 	MaxResponseSize     int64         `mapstructure:"max_response_size" yaml:"max_response_size"`         // Max response body size in bytes (0 = default 10MiB)
 
 	// Authentication
@@ -128,7 +128,7 @@ func (c *CrawlConfig) Validate() error {
 	if c.DatabasePath == "" {
 		return ErrEmptyDatabasePath
 	}
-	if c.MaxDepth < 0 || c.MaxDepth > 1 {
+	if c.MaxDepth < 0 {
 		return ErrInvalidMaxDepth
 	}
 

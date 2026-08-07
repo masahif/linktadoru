@@ -72,6 +72,81 @@ func TestMaxDepthOneStopsAfterDirectLinks(t *testing.T) {
 	}
 }
 
+func TestMaxDepthTwoIncludesDepthTwoAndLeavesDepthThreeGraphOnly(t *testing.T) {
+	var depthThreeRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/":
+			_, _ = fmt.Fprint(w, `<a href="/one">one</a>`)
+		case "/one":
+			_, _ = fmt.Fprint(w, `<a href="/two">two</a>`)
+		case "/two":
+			_, _ = fmt.Fprint(w, `<a href="/three">three</a>`)
+		case "/three":
+			depthThreeRequests.Add(1)
+		}
+	}))
+	defer server.Close()
+
+	store := newStore(t)
+	startCrawler(t, minimalConfig([]string{server.URL}, 2, 2), store)
+
+	for _, url := range []string{server.URL, server.URL + "/one", server.URL + "/two"} {
+		if got, _ := statusOf(t, store, url); got != "completed" {
+			t.Fatalf("%s status = %q, want completed", url, got)
+		}
+	}
+	if got, exists := statusOf(t, store, server.URL+"/three"); !exists || got != "discovered" {
+		t.Fatalf("depth-three status = %q exists=%v, want discovered", got, exists)
+	}
+	if got := depthThreeRequests.Load(); got != 0 {
+		t.Fatalf("depth-three page was fetched %d times", got)
+	}
+}
+
+func TestDiscoveryDepthDoesNotBlockOrRelaxCompetingPaths(t *testing.T) {
+	xReached := make(chan struct{})
+	var xOnce sync.Once
+	var slowReturned atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/slow":
+			select {
+			case <-xReached:
+			case <-time.After(3 * time.Second):
+				t.Error("deep path did not progress while slow seed was in flight")
+			}
+			slowReturned.Store(true)
+			_, _ = fmt.Fprint(w, `<a href="/x">short path</a>`)
+		case "/fast":
+			_, _ = fmt.Fprint(w, `<a href="/a">a</a>`)
+		case "/a":
+			_, _ = fmt.Fprint(w, `<a href="/b">b</a>`)
+		case "/b":
+			_, _ = fmt.Fprint(w, `<a href="/x">long path</a>`)
+		case "/x":
+			if slowReturned.Load() {
+				t.Error("slow seed returned before the deep path reached X")
+			}
+			xOnce.Do(func() { close(xReached) })
+			_, _ = fmt.Fprint(w, `<a href="/y">y</a>`)
+		case "/y":
+			t.Error("Y was fetched after X had already been admitted at the depth bound")
+		}
+	}))
+	defer server.Close()
+
+	store := newStore(t)
+	seeds := []string{server.URL + "/slow", server.URL + "/fast"}
+	startCrawler(t, minimalConfig(seeds, 3, 2), store)
+
+	if got, exists := statusOf(t, store, server.URL+"/y"); !exists || got != "discovered" {
+		t.Fatalf("Y status = %q exists=%v, want graph-only discovered", got, exists)
+	}
+}
+
 func TestMaxDepthZeroKeepsExistingUnboundedBehavior(t *testing.T) {
 	var grandchildRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -232,7 +307,7 @@ func TestMaxDepthOneRejectsMissingSeeds(t *testing.T) {
 func TestMaxDepthOneRejectsNonEmptyDatabase(t *testing.T) {
 	store := newStore(t)
 	const seed = "https://example.com"
-	if err := store.AddToQueue([]string{seed}); err != nil {
+	if err := store.AddToQueue([]string{seed}, 0); err != nil {
 		t.Fatal(err)
 	}
 	cfg := minimalConfig([]string{seed}, 1, 1)

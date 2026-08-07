@@ -33,11 +33,11 @@ Seed files contain one URL per line. Blank lines, surrounding whitespace, and
 lines beginning with `#` are ignored. `--seed-file` cannot be combined with URL
 arguments.
 
-The first implementation intentionally supports only `max_depth` 0 (unlimited)
-and 1 (each seed plus its direct internal links). It uses the existing
-asynchronous queue, so with multiple workers one slow seed does not prevent
-other workers from progressing. Use a fresh database for each comparison crawl.
-The initial `max_depth: 1` implementation does not resume a non-empty database.
+`max_depth: 0` is unlimited. A positive value admits links through that
+discovery depth: seeds are depth 0, their links are depth 1, and so on. The
+queue remains asynchronous, so one slow page does not block deeper work already
+admitted by another worker. Until URL-policy restoration lands, every bounded
+run requires explicit seeds and a fresh database.
 
 Selected temporary responses (408, 429, 500, 502, 503, 504) are retained in the
 database and retried after normal queue work, up to three total attempts.
@@ -145,7 +145,7 @@ A `Crawl-delay` in robots.txt is honored when it is slower than your configured 
 
 ### Interrupting and Resuming
 
-Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start. The initial `max_depth: 1` mode is the exception: it requires a fresh, empty database.
+Ctrl-C (SIGINT/SIGTERM) stops the crawl gracefully: in-flight state is persisted and the database is closed cleanly. Rerun with the same `--database` to resume — rows left in `processing` are automatically requeued at the next start. Bounded `max_depth` runs temporarily require explicit seeds and a fresh, empty database.
 
 ## Output Analysis
 
