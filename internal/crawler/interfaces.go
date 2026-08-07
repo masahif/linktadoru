@@ -20,7 +20,8 @@ type PageProcessor interface {
 // Storage handles data persistence
 type Storage interface {
 	// Queue management (using pages table)
-	AddToQueue(urls []string) error
+	AddSeeds(urls []string) error
+	AddToQueue(urls []string, depth int) error
 	GetNextFromQueue() (*URLItem, error)
 	UpdatePageStatus(id int, status string) error
 
@@ -40,6 +41,7 @@ type Storage interface {
 	CleanupStaleProcessing(timeout time.Duration) error
 	HasQueuedItems() (bool, error) // Check if queue has any work items (pending or processing)
 	HasAnyPages() (bool, error)
+	ValidateDepthTracking(seedURLs []string) error
 
 	// Retry management
 	GetRetryablePages(maxRetries int) ([]URLItem, error)

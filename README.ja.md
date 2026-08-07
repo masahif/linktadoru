@@ -83,7 +83,7 @@ user_agent: "LinkTadoru/1.0"
 ignore_robots_txt: false
 database_path: "./linktadoru.db"
 limit: 0                     # 0 = 無制限
-max_depth: 0                 # 0 = 無制限、1 = シードと直接リンク
+max_depth: 0                 # 0 = 無制限、正のN = 初回発見深さNまで
 
 # URL フィルタリング
 include_patterns: []

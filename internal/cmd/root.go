@@ -76,7 +76,7 @@ func init() {
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
 	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow crawling external hosts")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
-	rootCmd.Flags().Int("max-depth", 0, "Crawl direct links from seeds (0=unlimited, 1=one hop)")
+	rootCmd.Flags().Int("max-depth", 0, "Maximum discovery depth (0=unlimited)")
 	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
 
 	// Authentication type flag
@@ -266,6 +266,9 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
+	}
+	if cfg.MaxDepth > 0 && len(cfg.SeedURLs) == 0 {
+		return fmt.Errorf("--max-depth requires seed URLs and a fresh database")
 	}
 
 	// Validate startup conditions: prevent running without URLs and without existing database

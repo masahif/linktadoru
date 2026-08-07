@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS pages (
     -- Queue-related fields
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     processing_started_at DATETIME,
+    depth INTEGER,
     
     -- Crawl result fields (NULL until crawled)
     status_code INTEGER,
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS pages (
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status);
 CREATE INDEX IF NOT EXISTS idx_pages_status_added ON pages(status, added_at);
+CREATE INDEX IF NOT EXISTS idx_pages_status_depth_added_id ON pages(status, depth, added_at, id);
 CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
 CREATE INDEX IF NOT EXISTS idx_pages_content_hash ON pages(content_hash) WHERE content_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pages_status_code ON pages(status_code) WHERE status = 'completed';

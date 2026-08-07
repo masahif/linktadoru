@@ -2,10 +2,14 @@ package crawler
 
 import "time"
 
+// MaxRetryAttempts is the total attempt budget for retryable URLs.
+const MaxRetryAttempts = 3
+
 // URLItem represents an item in the crawl queue
 type URLItem struct {
-	ID  int    // Queue item ID for tracking
-	URL string // URL to be processed
+	ID    int    // Queue item ID for tracking
+	URL   string // URL to be processed
+	Depth int    // First queue-admission depth; explicit seeds are depth 0
 }
 
 // PageData represents crawled page information

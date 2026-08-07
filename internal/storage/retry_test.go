@@ -24,7 +24,7 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 		"https://example.com/big":  "response_too_large",
 	}
 	for u, et := range errorTypes {
-		if err := store.AddToQueue([]string{u}); err != nil {
+		if err := store.AddToQueue([]string{u}, 0); err != nil {
 			t.Fatalf("AddToQueue(%s): %v", u, err)
 		}
 		item, err := store.GetNextFromQueue()
@@ -67,7 +67,7 @@ func TestRetryEligibilityMatchesWrittenErrorTypes(t *testing.T) {
 func TestSavePageResponseErrorIsAtomicAndInspectable(t *testing.T) {
 	store := newTempStorage(t)
 	const pageURL = "https://example.com/unavailable"
-	if err := store.AddToQueue([]string{pageURL}); err != nil {
+	if err := store.AddToQueue([]string{pageURL}, 0); err != nil {
 		t.Fatal(err)
 	}
 	item, err := store.GetNextFromQueue()
@@ -139,7 +139,7 @@ func TestCleanupStaleProcessingResetsLegacyFormatRows(t *testing.T) {
 // in SQL matches chronological order regardless of local timezone/DST.
 func TestTimestampsStoredInFixedWidthUTC(t *testing.T) {
 	store := newTempStorage(t)
-	if err := store.AddToQueue([]string{"https://example.com/ts"}); err != nil {
+	if err := store.AddToQueue([]string{"https://example.com/ts"}, 0); err != nil {
 		t.Fatalf("AddToQueue: %v", err)
 	}
 

@@ -44,14 +44,14 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestValidateMaxDepth(t *testing.T) {
-	for _, depth := range []int{0, 1} {
+	for _, depth := range []int{0, 1, 2, 100} {
 		cfg := DefaultConfig()
 		cfg.MaxDepth = depth
 		if err := cfg.Validate(); err != nil {
 			t.Fatalf("MaxDepth=%d: %v", depth, err)
 		}
 	}
-	for _, depth := range []int{-1, 2} {
+	for _, depth := range []int{-1} {
 		cfg := DefaultConfig()
 		cfg.MaxDepth = depth
 		if err := cfg.Validate(); err != ErrInvalidMaxDepth {

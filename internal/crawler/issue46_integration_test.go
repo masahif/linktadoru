@@ -212,7 +212,7 @@ func TestStaleProcessingRowDoesNotHangOnResume(t *testing.T) {
 	store := newStore(t)
 	// Simulate a previous run that claimed the URL (pending -> processing) and
 	// then crashed before completing it.
-	if err := store.AddToQueue([]string{deadURL}); err != nil {
+	if err := store.AddToQueue([]string{deadURL}, 0); err != nil {
 		t.Fatalf("AddToQueue: %v", err)
 	}
 	if item, err := store.GetNextFromQueue(); err != nil || item == nil {

@@ -104,7 +104,7 @@ func testSaveAndRetrievePage(t *testing.T, storage *SQLiteStorage) {
 
 	// First add to queue to get an ID
 	urls := []string{page.URL}
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add to queue: %v", err)
 	}
@@ -164,7 +164,7 @@ func testQueueOperations(t *testing.T, storage *SQLiteStorage) {
 		"https://example.com/page3",
 	}
 
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add to queue: %v", err)
 	}
@@ -255,7 +255,7 @@ func testStatusBasedQueueControl(t *testing.T, storage *SQLiteStorage) {
 		"https://test.com/status2",
 	}
 
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add items: %v", err)
 	}
@@ -310,7 +310,7 @@ func testQueueResume(t *testing.T, storage *SQLiteStorage) {
 	}
 
 	// Add items to simulate existing queue
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add resume items: %v", err)
 	}
@@ -365,7 +365,7 @@ func testQueueStatusTracking(t *testing.T) {
 	}
 
 	// Add items
-	err = statusStorage.AddToQueue(urls)
+	err = statusStorage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add status test items: %v", err)
 	}
@@ -446,7 +446,7 @@ func testSavePageError(t *testing.T) {
 
 	// Add URL to queue first
 	urls := []string{"https://error.test/page"}
-	err = errorStorage.AddToQueue(urls)
+	err = errorStorage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Errorf("Failed to add URL to queue: %v", err)
 	}
@@ -660,7 +660,7 @@ func testGetURLStatus(t *testing.T) {
 	}
 
 	// Add URL to queue
-	err = statusStorage.AddToQueue([]string{testURL})
+	err = statusStorage.AddToQueue([]string{testURL}, 0)
 	if err != nil {
 		t.Errorf("Failed to add URL to queue: %v", err)
 	}
@@ -721,7 +721,7 @@ func testHasQueuedItems(t *testing.T) {
 
 	// Add URLs to queue
 	testURLs := []string{"https://queue.test/page1", "https://queue.test/page2"}
-	err = queueStorage.AddToQueue(testURLs)
+	err = queueStorage.AddToQueue(testURLs, 0)
 	if err != nil {
 		t.Errorf("Failed to add URLs to queue: %v", err)
 	}
@@ -848,7 +848,7 @@ func testConcurrentSavePageResults(t *testing.T, storage *SQLiteStorage) {
 		urls = append(urls, fmt.Sprintf("https://concurrent.test/page%d", i))
 	}
 
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Fatalf("Failed to add URLs to queue: %v", err)
 	}
@@ -995,7 +995,7 @@ func testConcurrentQueueOperations(t *testing.T, storage *SQLiteStorage) {
 		urls = append(urls, fmt.Sprintf("https://queue-concurrent.test/item%d", i))
 	}
 
-	err := storage.AddToQueue(urls)
+	err := storage.AddToQueue(urls, 0)
 	if err != nil {
 		t.Fatalf("Failed to add URLs for concurrent queue test: %v", err)
 	}
