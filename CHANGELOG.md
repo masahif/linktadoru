@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-07
+
+Versioning note: v0.10.0 was withdrawn. This release uses v0.11.0 instead of
+reusing a version number that had already been published.
+
 ### Compatibility and upgrade notes
 - **URL include semantics changed from filtering to authorization.** Persisted
   depth-0 seed origins are always allowed; `include_patterns` now add absolute
