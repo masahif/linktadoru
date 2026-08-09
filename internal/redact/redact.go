@@ -24,6 +24,17 @@ func URL(raw string) string {
 	if err != nil {
 		return Value
 	}
+	// Without an authority there is no parsed userinfo to strip, and url.Parse
+	// does not report an error for such input. "user:pass@host/path" parses as
+	// an opaque URL with scheme "user", which would otherwise pass through
+	// whole. Anything that carries "@" but no host is replaced entirely, since
+	// there is no way to tell which part of it is the credential.
+	if parsed.Host == "" {
+		if strings.Contains(raw, "@") {
+			return Value
+		}
+		return raw
+	}
 	if parsed.User == nil {
 		return raw
 	}

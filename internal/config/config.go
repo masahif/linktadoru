@@ -317,29 +317,34 @@ func (c *CrawlConfig) validateAPIKeyAuth() error {
 
 // validateHeaders validates HTTP headers format
 func (c *CrawlConfig) validateHeaders() error {
-	for _, header := range c.Headers {
+	for i, header := range c.Headers {
+		// The header is identified by position as well as by its redacted form:
+		// a header with no usable name redacts to a marker that says nothing
+		// about which of several configured headers was rejected.
+		position := i + 1
+
 		// Check if header has proper format "Name: Value"
 		colonIndex := strings.Index(header, ":")
 		if colonIndex <= 0 {
-			return fmt.Errorf("invalid header format '%s': expected 'Name: Value'", redact.Header(header))
+			return fmt.Errorf("invalid header %d '%s': expected 'Name: Value'", position, redact.Header(header))
 		}
 
 		headerName := strings.TrimSpace(header[:colonIndex])
 		headerValue := strings.TrimSpace(header[colonIndex+1:])
 
 		if headerName == "" {
-			return fmt.Errorf("invalid header format '%s': header name cannot be empty", redact.Header(header))
+			return fmt.Errorf("invalid header %d '%s': header name cannot be empty", position, redact.Header(header))
 		}
 
 		if headerValue == "" {
-			return fmt.Errorf("invalid header format '%s': header value cannot be empty", redact.Header(header))
+			return fmt.Errorf("invalid header %d '%s': header value cannot be empty", position, redact.Header(header))
 		}
 
 		// Check for forbidden headers that should not be set manually
 		forbiddenHeaders := []string{"host", "content-length", "connection"}
 		for _, forbidden := range forbiddenHeaders {
 			if strings.EqualFold(headerName, forbidden) {
-				return fmt.Errorf("cannot set forbidden header '%s'", headerName)
+				return fmt.Errorf("invalid header %d: cannot set forbidden header '%s'", position, headerName)
 			}
 		}
 	}

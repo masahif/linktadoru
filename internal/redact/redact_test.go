@@ -15,6 +15,12 @@ func TestURL(t *testing.T) {
 		{"username and password", "https://user-secret:pass-secret@example.com/p", "https://redacted@example.com/p"},
 		{"username only", "https://user-secret@example.com/p", "https://redacted@example.com/p"},
 		{"unparsable", "https://exa mple.com/\x7f", Value},
+		{"schemeless with credentials", "user-secret:pass-secret@example.com/p", Value},
+		{"schemeless with username", "user-secret@example.com/p", Value},
+		{"at sign in path", "https://example.com/@handle", "https://example.com/@handle"},
+		{"ipv6 host", "https://user-secret:pass-secret@[::1]:8080/p", "https://redacted@[::1]:8080/p"},
+		{"password only", "https://:pass-secret@example.com/", "https://redacted@example.com/"},
+		{"relative path", "/local/path", "/local/path"},
 		{"empty", "", ""},
 	}
 

@@ -430,43 +430,43 @@ func TestValidateHeaders(t *testing.T) {
 			name:    "invalid header format - no colon",
 			headers: []string{"InvalidHeader"},
 			wantErr: true,
-			errMsg:  "invalid header format '<redacted>': expected 'Name: Value'",
+			errMsg:  "invalid header 1 '<redacted>': expected 'Name: Value'",
 		},
 		{
 			name:    "invalid header format - colon at start",
 			headers: []string{":Value"},
 			wantErr: true,
-			errMsg:  "invalid header format ': <redacted>': expected 'Name: Value'",
+			errMsg:  "invalid header 1 ': <redacted>': expected 'Name: Value'",
 		},
 		{
 			name:    "empty header name",
 			headers: []string{" : Value"},
 			wantErr: true,
-			errMsg:  "invalid header format ': <redacted>': header name cannot be empty",
+			errMsg:  "invalid header 1 ': <redacted>': header name cannot be empty",
 		},
 		{
 			name:    "empty header value",
 			headers: []string{"Name: "},
 			wantErr: true,
-			errMsg:  "invalid header format 'Name:': header value cannot be empty",
+			errMsg:  "invalid header 1 'Name:': header value cannot be empty",
 		},
 		{
 			name:    "forbidden header - host",
 			headers: []string{"Host: example.com"},
 			wantErr: true,
-			errMsg:  "cannot set forbidden header 'Host'",
+			errMsg:  "invalid header 1: cannot set forbidden header 'Host'",
 		},
 		{
 			name:    "forbidden header - content-length",
 			headers: []string{"Content-Length: 100"},
 			wantErr: true,
-			errMsg:  "cannot set forbidden header 'Content-Length'",
+			errMsg:  "invalid header 1: cannot set forbidden header 'Content-Length'",
 		},
 		{
 			name:    "forbidden header - connection",
 			headers: []string{"Connection: keep-alive"},
 			wantErr: true,
-			errMsg:  "cannot set forbidden header 'Connection'",
+			errMsg:  "invalid header 1: cannot set forbidden header 'Connection'",
 		},
 	}
 
@@ -500,7 +500,7 @@ func TestValidateHeadersDoesNotLeakHeaderValues(t *testing.T) {
 	}{
 		{"no colon", "header-value-secret"},
 		{"empty name", " : header-value-secret"},
-		{"empty value", "X-Empty:   "},
+		{"forbidden header", "Host: host-value-secret"},
 	}
 
 	for _, tt := range tests {
@@ -510,7 +510,7 @@ func TestValidateHeadersDoesNotLeakHeaderValues(t *testing.T) {
 				RequestDelay:   0.1,
 				RequestTimeout: 30 * time.Second,
 				DatabasePath:   "./test.db",
-				Headers:        []string{tt.header},
+				Headers:        []string{"X-Valid: fine", tt.header},
 			}
 			err := cfg.Validate()
 			if err == nil {
@@ -518,6 +518,9 @@ func TestValidateHeadersDoesNotLeakHeaderValues(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "secret") {
 				t.Errorf("Validate() error leaked the header value: %v", err)
+			}
+			if !strings.Contains(err.Error(), "2") {
+				t.Errorf("Validate() error does not identify which header was rejected: %v", err)
 			}
 		})
 	}
