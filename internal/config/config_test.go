@@ -430,25 +430,25 @@ func TestValidateHeaders(t *testing.T) {
 			name:    "invalid header format - no colon",
 			headers: []string{"InvalidHeader"},
 			wantErr: true,
-			errMsg:  "invalid header format 'InvalidHeader': expected 'Name: Value'",
+			errMsg:  "invalid header format '<redacted>': expected 'Name: Value'",
 		},
 		{
 			name:    "invalid header format - colon at start",
 			headers: []string{":Value"},
 			wantErr: true,
-			errMsg:  "invalid header format ':Value': expected 'Name: Value'",
+			errMsg:  "invalid header format ': <redacted>': expected 'Name: Value'",
 		},
 		{
 			name:    "empty header name",
 			headers: []string{" : Value"},
 			wantErr: true,
-			errMsg:  "invalid header format ' : Value': header name cannot be empty",
+			errMsg:  "invalid header format ': <redacted>': header name cannot be empty",
 		},
 		{
 			name:    "empty header value",
 			headers: []string{"Name: "},
 			wantErr: true,
-			errMsg:  "invalid header format 'Name: ': header value cannot be empty",
+			errMsg:  "invalid header format 'Name:': header value cannot be empty",
 		},
 		{
 			name:    "forbidden header - host",
@@ -486,6 +486,38 @@ func TestValidateHeaders(t *testing.T) {
 			}
 			if tt.wantErr && tt.errMsg != "" && err.Error() != tt.errMsg {
 				t.Errorf("Validate() error = %v, want error containing %v", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestValidateHeadersDoesNotLeakHeaderValues(t *testing.T) {
+	// The validation error is printed to stderr on the normal startup path, so
+	// it must not quote the value it rejects.
+	tests := []struct {
+		name   string
+		header string
+	}{
+		{"no colon", "header-value-secret"},
+		{"empty name", " : header-value-secret"},
+		{"empty value", "X-Empty:   "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &CrawlConfig{
+				Concurrency:    2,
+				RequestDelay:   0.1,
+				RequestTimeout: 30 * time.Second,
+				DatabasePath:   "./test.db",
+				Headers:        []string{tt.header},
+			}
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want an error for header %q", tt.header)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Errorf("Validate() error leaked the header value: %v", err)
 			}
 		})
 	}

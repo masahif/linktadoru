@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/masahif/linktadoru/internal/redact"
 )
 
 // urlPolicy is the crawler's single URL authorization decision. Persisted
@@ -82,7 +84,7 @@ func (p *urlPolicy) setImplicitOrigins(urls []string) error {
 func (p *urlPolicy) validateExplicitURLs(urls []string) error {
 	for _, raw := range urls {
 		if _, _, err := p.parse(raw); err != nil {
-			return fmt.Errorf("invalid seed URL %q: %w", raw, err)
+			return fmt.Errorf("invalid seed URL %q: %w", redact.URL(raw), err)
 		}
 	}
 	return nil

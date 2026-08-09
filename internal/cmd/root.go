@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/masahif/linktadoru/internal/config"
 	"github.com/masahif/linktadoru/internal/crawler"
 	"github.com/masahif/linktadoru/internal/logging"
+	"github.com/masahif/linktadoru/internal/redact"
 	"github.com/masahif/linktadoru/internal/storage"
 )
 
@@ -28,8 +28,6 @@ var (
 	version   string
 	buildTime string
 )
-
-const redactedConfigValue = "<redacted>"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -236,14 +234,14 @@ func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
 
 	redacted.SeedURLs = make([]string, len(cfg.SeedURLs))
 	for i, seedURL := range cfg.SeedURLs {
-		redacted.SeedURLs[i] = redactSeedURLForDisplay(seedURL)
+		redacted.SeedURLs[i] = redact.URL(seedURL)
 	}
 	redacted.IncludePatterns = append([]string(nil), cfg.IncludePatterns...)
 	redacted.ExcludePatterns = append([]string(nil), cfg.ExcludePatterns...)
 	redacted.AllowedSchemes = append([]string(nil), cfg.AllowedSchemes...)
 	redacted.Headers = make([]string, len(cfg.Headers))
 	for i, header := range cfg.Headers {
-		redacted.Headers[i] = redactHeaderForDisplay(header)
+		redacted.Headers[i] = redact.Header(header)
 	}
 
 	if cfg.Auth == nil {
@@ -256,10 +254,10 @@ func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
 	if cfg.Auth.Basic != nil {
 		basic := *cfg.Auth.Basic
 		if basic.Username != "" {
-			basic.Username = redactedConfigValue
+			basic.Username = redact.Value
 		}
 		if basic.Password != "" {
-			basic.Password = redactedConfigValue
+			basic.Password = redact.Value
 		}
 		auth.Basic = &basic
 	}
@@ -267,7 +265,7 @@ func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
 	if cfg.Auth.Bearer != nil {
 		bearer := *cfg.Auth.Bearer
 		if bearer.Token != "" {
-			bearer.Token = redactedConfigValue
+			bearer.Token = redact.Value
 		}
 		auth.Bearer = &bearer
 	}
@@ -275,38 +273,12 @@ func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
 	if cfg.Auth.APIKey != nil {
 		apiKey := *cfg.Auth.APIKey
 		if apiKey.Value != "" {
-			apiKey.Value = redactedConfigValue
+			apiKey.Value = redact.Value
 		}
 		auth.APIKey = &apiKey
 	}
 
 	return &redacted
-}
-
-func redactSeedURLForDisplay(raw string) string {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return redactedConfigValue
-	}
-	if parsed.User == nil {
-		return raw
-	}
-	parsed.User = url.User("redacted")
-	return parsed.String()
-}
-
-func redactHeaderForDisplay(header string) string {
-	name, value, found := strings.Cut(header, ":")
-	if !found {
-		return redactedConfigValue
-	}
-	if strings.TrimSpace(name) == "" {
-		return ": " + redactedConfigValue
-	}
-	if strings.TrimSpace(value) == "" {
-		return strings.TrimSpace(name) + ":"
-	}
-	return strings.TrimSpace(name) + ": " + redactedConfigValue
 }
 
 func applySeedURLs(cmd *cobra.Command, args []string, cfg *config.CrawlConfig) error {
@@ -432,7 +404,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Ignore Robots.txt: %t\n", cfg.IgnoreRobotsTxt)
 
 	// Display auth status without exposing credentials. The username is part of
-	// the credential, so it is named as configured but never printed.
+	// the credential, so only the credential kind is reported.
 	fmt.Printf("  Authentication: %s\n", describeAuthForDisplay(cfg))
 
 	// Initialize and start the crawler

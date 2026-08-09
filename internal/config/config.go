@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/masahif/linktadoru/internal/redact"
 )
 
 // BasicAuth contains HTTP Basic Authentication credentials
@@ -319,18 +321,18 @@ func (c *CrawlConfig) validateHeaders() error {
 		// Check if header has proper format "Name: Value"
 		colonIndex := strings.Index(header, ":")
 		if colonIndex <= 0 {
-			return fmt.Errorf("invalid header format '%s': expected 'Name: Value'", header)
+			return fmt.Errorf("invalid header format '%s': expected 'Name: Value'", redact.Header(header))
 		}
 
 		headerName := strings.TrimSpace(header[:colonIndex])
 		headerValue := strings.TrimSpace(header[colonIndex+1:])
 
 		if headerName == "" {
-			return fmt.Errorf("invalid header format '%s': header name cannot be empty", header)
+			return fmt.Errorf("invalid header format '%s': header name cannot be empty", redact.Header(header))
 		}
 
 		if headerValue == "" {
-			return fmt.Errorf("invalid header format '%s': header value cannot be empty", header)
+			return fmt.Errorf("invalid header format '%s': header value cannot be empty", redact.Header(header))
 		}
 
 		// Check for forbidden headers that should not be set manually

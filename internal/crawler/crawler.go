@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/masahif/linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/redact"
 )
 
 // DefaultCrawler implements the Crawler interface
@@ -69,7 +70,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 			colonIndex := strings.Index(header, ":")
 			if colonIndex <= 0 {
 				// Skip invalid headers - validation should have caught this
-				slog.Warn("Skipping invalid header format", "header", header)
+				slog.Warn("Skipping invalid header format", "header", redact.Header(header))
 				continue
 			}
 
@@ -78,7 +79,7 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 
 			if key == "" || value == "" {
 				// Skip empty key or value
-				slog.Warn("Skipping header with empty key or value", "header", header)
+				slog.Warn("Skipping header with empty key or value", "header", redact.Header(header))
 				continue
 			}
 

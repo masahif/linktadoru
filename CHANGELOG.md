@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   now reports bearer and API-key runs instead of labelling them
   `Authentication: None`. The banner runs on every crawl, so it leaked the same
   value `--show-config` redacts (#90).
+- Configuration errors and warnings no longer quote the secret that caused
+  them. A malformed `-H` header used to reach stderr with its value intact, a
+  seed URL rejected for carrying userinfo used to reach stderr with its
+  credentials intact, and the crawler logged skipped headers in full. All three
+  run without `--show-config`, so they leaked on the default path. Redaction
+  now lives in one place (`internal/redact`) shared by the diagnostic dump, the
+  validation errors, and the logs (#90).
 
 ## [0.11.0] - 2026-08-07
 

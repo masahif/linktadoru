@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/masahif/linktadoru/internal/config"
+	"github.com/masahif/linktadoru/internal/redact"
 	"github.com/masahif/linktadoru/internal/storage"
 )
 
@@ -165,7 +166,7 @@ func TestShowCurrentConfigRedactsSecrets(t *testing.T) {
 	}
 
 	visibleMetadata := []string{
-		redactedConfigValue,
+		redact.Value,
 		"username_env: BASIC_USERNAME",
 		"password_env: BASIC_PASSWORD",
 		"token_env: BEARER_TOKEN",
@@ -224,7 +225,7 @@ func TestShowCurrentConfigRedactsInvalidHeaderValidationError(t *testing.T) {
 	if !strings.Contains(stderr.String(), "Configuration validation failed") {
 		t.Fatalf("stderr does not contain the expected validation warning: %s", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), redactedConfigValue) {
+	if !strings.Contains(stderr.String(), redact.Value) {
 		t.Fatalf("stderr does not contain the redaction marker: %s", stderr.String())
 	}
 }

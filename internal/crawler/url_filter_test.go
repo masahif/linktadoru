@@ -1,6 +1,9 @@
 package crawler
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestURLPolicyImplicitOriginAndExclude(t *testing.T) {
 	policy, err := newURLPolicy(
@@ -90,5 +93,26 @@ func TestURLPolicyFollowExternalIgnoresIncludeAndHonorsExclude(t *testing.T) {
 func TestCompilePatternsRejectsInvalidRegexp(t *testing.T) {
 	if _, err := compilePatterns([]string{"["}); err == nil {
 		t.Fatal("invalid regexp was accepted")
+	}
+}
+
+func TestValidateExplicitURLsDoesNotLeakUserinfo(t *testing.T) {
+	// A seed carrying userinfo is always rejected, and the resulting error
+	// reaches stderr on the normal startup path, so it must not quote the
+	// credential it rejects.
+	policy, err := newURLPolicy([]string{"https://"}, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = policy.validateExplicitURLs([]string{"https://user-secret:pass-secret@example.com/private"})
+	if err == nil {
+		t.Fatal("validateExplicitURLs() = nil, want an error for a seed URL with userinfo")
+	}
+	if strings.Contains(err.Error(), "secret") {
+		t.Errorf("validateExplicitURLs() error leaked the credential: %v", err)
+	}
+	if !strings.Contains(err.Error(), "example.com") {
+		t.Errorf("validateExplicitURLs() error does not identify the seed: %v", err)
 	}
 }
