@@ -322,3 +322,127 @@ func TestRunCrawlerStartupValidation(t *testing.T) {
 		// (The actual runCrawler call is omitted to prevent test timeouts)
 	})
 }
+
+// credentialFromEnvConfig is the shape the trust check exists for: a file the
+// operator did not write, choosing the destination, while their environment
+// supplies the secret. It sets no credential of its own.
+const untrustedSeedConfig = `
+seed_urls:
+  - https://collector.example/receive
+`
+
+func writeWorkdirConfig(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "linktadoru.yml")
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	return path
+}
+
+// configWithCredential returns a config carrying the named credential and the
+// seeds an untrusted file would have supplied.
+func configWithCredential(t *testing.T, kind string) *config.CrawlConfig {
+	t.Helper()
+	cfg := config.DefaultConfig()
+	cfg.SeedURLs = []string{"https://collector.example/receive"}
+
+	switch kind {
+	case "none":
+	case "bearer from fixed env name":
+		// What LT_AUTH_BEARER_TOKEN produces: viper resolves the environment
+		// variable over the file's value, so the file needs only auth.type.
+		cfg.Auth = &config.Auth{Type: config.BearerAuthType, Bearer: &config.BearerAuth{Token: "operator-secret"}}
+	case "bearer through token_env":
+		t.Setenv("TRUST_TEST_TOKEN", "operator-secret")
+		cfg.Auth = &config.Auth{Type: config.BearerAuthType, Bearer: &config.BearerAuth{TokenEnv: "TRUST_TEST_TOKEN"}}
+	case "basic":
+		cfg.Auth = &config.Auth{Type: config.BasicAuthType, Basic: &config.BasicAuth{Username: "u", Password: "operator-secret"}}
+	case "api key":
+		cfg.Auth = &config.Auth{Type: config.APIKeyAuthType, APIKey: &config.APIKeyAuth{Header: "X-API-Key", Value: "operator-secret"}}
+	case "custom header":
+		// What LT_HEADER_AUTHORIZATION produces after LoadHeadersFromEnv.
+		cfg.Headers = []string{"Authorization: Bearer operator-secret"}
+	default:
+		t.Fatalf("unknown credential kind %q", kind)
+	}
+	return cfg
+}
+
+func TestCheckConfigTrustRejectsUnvouchedSeedsWithCredentials(t *testing.T) {
+	// Every route by which the operator's environment can supply a credential
+	// while an unvouched file picks the destination.
+	for _, kind := range []string{
+		"bearer from fixed env name",
+		"bearer through token_env",
+		"basic",
+		"api key",
+		"custom header",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			path := writeWorkdirConfig(t, untrustedSeedConfig)
+			cfg := configWithCredential(t, kind)
+
+			err := checkConfigTrust(false, path, true, cfg)
+			if err == nil {
+				t.Fatalf("checkConfigTrust() = nil, want an error when an unvouched file picks the seeds and %s is configured", kind)
+			}
+			if !strings.Contains(err.Error(), "--config") {
+				t.Errorf("error does not tell the operator how to proceed: %v", err)
+			}
+			for _, secret := range []string{"operator-secret", "collector.example", "TRUST_TEST_TOKEN"} {
+				if strings.Contains(err.Error(), secret) {
+					t.Errorf("error reports %q, which is either a secret or content of the untrusted file: %v", secret, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckConfigTrustAllows(t *testing.T) {
+	tests := []struct {
+		name            string
+		namedExplicitly bool
+		seedsFromConfig bool
+		credential      string
+		why             string
+	}{
+		{
+			name:            "operator vouched for the file",
+			namedExplicitly: true,
+			seedsFromConfig: true,
+			credential:      "custom header",
+			why:             "--config is the operator stating they trust the file",
+		},
+		{
+			name:            "seeds given on the command line",
+			seedsFromConfig: false,
+			credential:      "custom header",
+			why:             "the destination is the operator's choice, so the file cannot redirect the credential",
+		},
+		{
+			name:            "no credential in play",
+			seedsFromConfig: true,
+			credential:      "none",
+			why:             "a crawl with no credential has nothing to exfiltrate",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeWorkdirConfig(t, untrustedSeedConfig)
+			cfg := configWithCredential(t, tt.credential)
+
+			if err := checkConfigTrust(tt.namedExplicitly, path, tt.seedsFromConfig, cfg); err != nil {
+				t.Errorf("checkConfigTrust() = %v, want nil: %s", err, tt.why)
+			}
+		})
+	}
+}
+
+func TestCheckConfigTrustWithoutConfigFile(t *testing.T) {
+	cfg := configWithCredential(t, "custom header")
+	if err := checkConfigTrust(false, "", true, cfg); err != nil {
+		t.Errorf("checkConfigTrust() = %v, want nil when no config file was read", err)
+	}
+}

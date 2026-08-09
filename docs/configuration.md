@@ -224,6 +224,37 @@ auth:
     token: "your-token-here"
 ```
 
+### Trusting a Configuration File
+
+A configuration file supplies the seed URLs, and your environment supplies
+credentials. Neither is dangerous alone; together they let a file you did not
+write choose where your secrets are sent. That pairing does not require the file
+to contain anything suspicious — `LT_AUTH_BEARER_TOKEN` or
+`LT_HEADER_AUTHORIZATION` exported in your shell is enough, and origin scoping
+does not help because the scope is the seed list the file provided.
+
+So LinkTadoru refuses one combination: a configuration file **found** in the
+working directory, supplying the seeds, on a run that carries any credential.
+
+```console
+$ linktadoru                                    # ./linktadoru.yml has seed_urls, $LT_HEADER_AUTHORIZATION is set
+Error: configuration file linktadoru.yml was found in the working directory
+rather than named with --config, and it supplies the seed URLs for this run
+while custom headers are configured; ...
+
+$ linktadoru --config linktadoru.yml            # you vouch for the file
+$ linktadoru https://example.com/               # you choose the destination
+```
+
+Either flag breaks the pair, and both are you stating where your credentials go.
+Everything else keeps working untouched: a found file may still choose seeds
+when no credential is in play, and may still carry credentials written into it
+directly when you supply the seeds. `--show-config` is never blocked, since
+inspecting a configuration sends nothing.
+
+The case this protects is running LinkTadoru inside a checkout you did not
+write, with credentials in your environment; CI jobs do exactly that.
+
 ### Security Best Practices
 
 ⚠️ **Important Security Notes:**
@@ -231,6 +262,7 @@ auth:
 - Never include credentials in CLI flags (visible in process lists and shell history)
 - Never store credentials in configuration files committed to version control
 - Use separate configuration files for different environments (dev/staging/prod)
+- Pass `--config` explicitly when a configuration file supplies credentials
 
 ## Custom HTTP Headers
 

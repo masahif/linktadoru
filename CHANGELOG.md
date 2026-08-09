@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Compatibility and upgrade notes
+- **A configuration file found in the working directory can no longer supply the
+  seed URLs for a run that carries credentials.** The file chooses the
+  destination and the environment supplies the secret, so a file the operator
+  never vouched for could send a credential wherever it liked — through a
+  `*_env` key, through an `auth.type` that activates a fixed `LT_AUTH_*`
+  variable, or through nothing at all while `LT_HEADER_AUTHORIZATION` is
+  exported. Origin-scoped credentials do not help, because the scope is the seed
+  list the file supplied. Naming the file with `--config`, or giving the seed
+  URLs on the command line, restores the previous behavior. A found file may
+  still choose seeds when no credential is configured, and may still carry
+  credentials written into it directly when the seeds come from the command
+  line. `--show-config` is unaffected (#88).
+
 ## [0.11.0] - 2026-08-07
 
 Versioning note: v0.10.0 was withdrawn. This release uses v0.11.0 instead of

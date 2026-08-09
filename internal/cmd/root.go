@@ -22,9 +22,13 @@ import (
 )
 
 var (
-	cfgFile   string
-	version   string
-	buildTime string
+	cfgFile string
+	// configNamedExplicitly records whether the operator named the
+	// configuration file, as opposed to it being found in the working
+	// directory. See checkConfigTrust.
+	configNamedExplicitly bool
+	version               string
+	buildTime             string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -139,6 +143,8 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	configNamedExplicitly = cfgFile != ""
+
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -157,6 +163,63 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintf(os.Stderr, "Using config file: %s\n", viper.ConfigFileUsed())
 	}
+}
+
+// checkConfigTrust refuses to run when a configuration file that was merely
+// found in the working directory picks the destination for a run that carries
+// credentials.
+//
+// The exfiltration primitive is the pair, not either half. A file chooses the
+// seed URLs; the operator's environment supplies the secret. It does not matter
+// how the file reaches that secret -- a *_env key naming a variable, an
+// auth.type that activates a fixed LT_AUTH_* variable, or nothing at all while
+// LT_HEADER_AUTHORIZATION is exported -- because every one of those ends with a
+// credential sent to an origin the file selected. Origin-scoped credentials do
+// not help: the scope is exactly the seed list the file supplied.
+//
+// So the rule is about the pair. A file the operator has not vouched for may
+// still choose seeds (a crawl is not a secret) and may still carry credentials
+// written into it directly (those belong to whoever wrote it), but it may not
+// do both at once with a credential in play.
+//
+// Naming the file with --config, or supplying the seeds on the command line,
+// breaks the pair. Either is the operator stating where their credentials go.
+func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, cfg *config.CrawlConfig) error {
+	if namedExplicitly || path == "" || !seedsFromConfig {
+		return nil
+	}
+
+	kinds := configuredCredentialKinds(cfg)
+	if len(kinds) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"configuration file %s was found in the working directory rather than named with --config, "+
+			"and it supplies the seed URLs for this run while %s configured; "+
+			"a file you have not vouched for must not choose where your credentials are sent. "+
+			"Re-run with --config %s to vouch for the file, or give the seed URLs on the command line",
+		path, strings.Join(kinds, " and "), path)
+}
+
+// configuredCredentialKinds names the credentials this run would send, without
+// reporting any part of their value. An empty result means the run carries
+// nothing worth protecting from the seed list.
+func configuredCredentialKinds(cfg *config.CrawlConfig) []string {
+	var kinds []string
+	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
+		kinds = append(kinds, "basic authentication is")
+	}
+	if cfg.GetBearerToken() != "" {
+		kinds = append(kinds, "a bearer token is")
+	}
+	if header, value := cfg.GetAPIKeyCredentials(); header != "" && value != "" {
+		kinds = append(kinds, "an API key is")
+	}
+	if len(cfg.Headers) > 0 {
+		kinds = append(kinds, "custom headers are")
+	}
+	return kinds
 }
 
 func generateUserAgent() string {
@@ -234,6 +297,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	seedsFromConfig := len(args) == 0 && !cmd.Flags().Changed("seed-file")
 	if err := applySeedURLs(cmd, args, cfg); err != nil {
 		return err
 	}
@@ -246,9 +310,15 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 		cfg.UserAgent = generateUserAgent()
 	}
 
-	// Handle --show-config: display current configuration and exit
+	// Handle --show-config: display current configuration and exit. Inspecting
+	// the configuration sends nothing, so it stays available even for a file
+	// the trust check below would refuse to crawl with.
 	if showConfig {
 		return showCurrentConfig(cfg)
+	}
+
+	if err := checkConfigTrust(configNamedExplicitly, viper.ConfigFileUsed(), seedsFromConfig, cfg); err != nil {
+		return err
 	}
 
 	// Initialize logging
