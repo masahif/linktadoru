@@ -45,7 +45,7 @@ This table is the authoritative reference for all options. Run `./linktadoru --h
 | log_max_size | - | - | 100 | Max log file size in MB before rotation (config file only) |
 | log_max_backups | - | - | 5 | Number of rotated log files to keep (config file only) |
 | **Other** |
-| show_config | `--show-config` | - | false | Display current configuration and exit |
+| show_config | `--show-config` | - | false | Display current configuration with secret values redacted, then exit |
 
 ## Configuration File
 

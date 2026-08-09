@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -86,6 +87,145 @@ func TestRootCmd(t *testing.T) {
 
 	if rootCmd.RunE == nil {
 		t.Error("RunE should be set to runCrawler")
+	}
+}
+
+func TestShowCurrentConfigRedactsSecrets(t *testing.T) {
+	t.Setenv("BASIC_USERNAME", "basic-env-username-secret")
+	t.Setenv("BASIC_PASSWORD", "basic-env-password-secret")
+	t.Setenv("BEARER_TOKEN", "bearer-env-secret")
+	t.Setenv("API_KEY_VALUE", "api-key-env-secret")
+	t.Setenv("LT_HEADER_AUTHORIZATION", "Bearer env-header-secret")
+	t.Setenv("LT_HEADER_COOKIE", "session=env-cookie-secret")
+	t.Setenv("LT_HEADER_X_CUSTOM", "env-custom-secret")
+
+	cfg := config.DefaultConfig()
+	cfg.SeedURLs = []string{
+		"https://seed-user-secret:seed-password-secret@example.com/private",
+		"https://public.example/",
+	}
+	cfg.Auth = &config.Auth{
+		Type: config.BasicAuthType,
+		Basic: &config.BasicAuth{
+			Username:    "direct-username-secret",
+			Password:    "direct-password-secret",
+			UsernameEnv: "BASIC_USERNAME",
+			PasswordEnv: "BASIC_PASSWORD",
+		},
+		Bearer: &config.BearerAuth{
+			Token:    "direct-bearer-secret",
+			TokenEnv: "BEARER_TOKEN",
+		},
+		APIKey: &config.APIKeyAuth{
+			Header:   "X-API-Key",
+			Value:    "direct-api-key-secret",
+			ValueEnv: "API_KEY_VALUE",
+		},
+	}
+	cfg.Headers = []string{
+		"X-Direct: direct-header-secret",
+		"malformed-header-secret",
+	}
+	cfg.LoadHeadersFromEnv()
+
+	originalHeaders := append([]string(nil), cfg.Headers...)
+
+	cmd := &cobra.Command{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := showCurrentConfig(cmd, cfg); err != nil {
+		t.Fatalf("showCurrentConfig() error = %v", err)
+	}
+
+	output := stdout.String() + stderr.String()
+	secrets := []string{
+		"direct-username-secret",
+		"direct-password-secret",
+		"direct-bearer-secret",
+		"direct-api-key-secret",
+		"direct-header-secret",
+		"malformed-header-secret",
+		"basic-env-username-secret",
+		"basic-env-password-secret",
+		"bearer-env-secret",
+		"api-key-env-secret",
+		"env-header-secret",
+		"env-cookie-secret",
+		"env-custom-secret",
+		"seed-user-secret",
+		"seed-password-secret",
+	}
+	for _, secret := range secrets {
+		if strings.Contains(output, secret) {
+			t.Errorf("show-config output leaked secret %q", secret)
+		}
+	}
+
+	visibleMetadata := []string{
+		redactedConfigValue,
+		"username_env: BASIC_USERNAME",
+		"password_env: BASIC_PASSWORD",
+		"token_env: BEARER_TOKEN",
+		"value_env: API_KEY_VALUE",
+		"header: X-API-Key",
+		"X-Direct: <redacted>",
+		"Authorization: <redacted>",
+		"Cookie: <redacted>",
+		"X-Custom: <redacted>",
+		"https://redacted@example.com/private",
+		"https://public.example/",
+	}
+	for _, want := range visibleMetadata {
+		if !strings.Contains(output, want) {
+			t.Errorf("show-config output does not contain %q\noutput:\n%s", want, output)
+		}
+	}
+
+	if cfg.Auth.Basic.Username != "direct-username-secret" || cfg.Auth.Basic.Password != "direct-password-secret" {
+		t.Fatal("showCurrentConfig mutated the runtime basic-auth configuration")
+	}
+	if cfg.Auth.Bearer.Token != "direct-bearer-secret" {
+		t.Fatal("showCurrentConfig mutated the runtime bearer configuration")
+	}
+	if cfg.Auth.APIKey.Value != "direct-api-key-secret" {
+		t.Fatal("showCurrentConfig mutated the runtime API-key configuration")
+	}
+	if len(cfg.Headers) != len(originalHeaders) {
+		t.Fatal("showCurrentConfig mutated the runtime header list")
+	}
+	for i := range originalHeaders {
+		if cfg.Headers[i] != originalHeaders[i] {
+			t.Fatalf("showCurrentConfig mutated header %d: got %q, want %q", i, cfg.Headers[i], originalHeaders[i])
+		}
+	}
+}
+
+func TestShowCurrentConfigRedactsInvalidHeaderValidationError(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Headers = []string{"invalid-header-secret"}
+
+	cmd := &cobra.Command{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := showCurrentConfig(cmd, cfg); err != nil {
+		t.Fatalf("showCurrentConfig() error = %v", err)
+	}
+
+	output := stdout.String() + stderr.String()
+	if strings.Contains(output, "invalid-header-secret") {
+		t.Fatal("show-config validation output leaked an invalid header value")
+	}
+	if !strings.Contains(stderr.String(), "Configuration validation failed") {
+		t.Fatalf("stderr does not contain the expected validation warning: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), redactedConfigValue) {
+		t.Fatalf("stderr does not contain the redaction marker: %s", stderr.String())
 	}
 }
 

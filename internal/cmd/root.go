@@ -5,6 +5,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -26,6 +28,8 @@ var (
 	version   string
 	buildTime string
 )
+
+const redactedConfigValue = "<redacted>"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -166,38 +170,127 @@ func generateUserAgent() string {
 	return "LinkTadoru/dev"
 }
 
-func showCurrentConfig(cfg *config.CrawlConfig) error {
+func showCurrentConfig(cmd *cobra.Command, cfg *config.CrawlConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("configuration is nil")
 	}
-
-	// Validate configuration before showing it
-	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Configuration validation failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Displaying configuration anyway...\n\n")
+	if cmd == nil {
+		return fmt.Errorf("command is nil")
 	}
 
-	yamlData, err := yaml.Marshal(cfg)
+	displayConfig := redactConfigForDisplay(cfg)
+	stdout := cmd.OutOrStdout()
+	stderr := cmd.ErrOrStderr()
+
+	// Validate configuration before showing it
+	if err := displayConfig.Validate(); err != nil {
+		warning := fmt.Sprintf("Warning: Configuration validation failed: %v\n", err) +
+			"Displaying configuration anyway...\n\n"
+		// Best effort: the configuration below is still worth printing even if
+		// this diagnostic cannot be delivered.
+		_, _ = io.WriteString(stderr, warning)
+	}
+
+	yamlData, err := yaml.Marshal(displayConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal configuration to YAML: %w", err)
 	}
 
-	// Add header comment to the output
-	fmt.Printf("# Current LinkTadoru Configuration\n")
-	fmt.Printf("# Generated at: %s\n", time.Now().Format(time.RFC3339))
-	fmt.Printf("# Configuration file search paths: ./linktadoru.yml\n")
-	fmt.Printf("# Environment variables prefix: LT_\n\n")
+	header := fmt.Sprintf("# Current LinkTadoru Configuration\n"+
+		"# Generated at: %s\n"+
+		"# Configuration file search paths: ./linktadoru.yml\n"+
+		"# Environment variables prefix: LT_\n\n",
+		time.Now().Format(time.RFC3339))
 
-	fmt.Print(string(yamlData))
+	footer := "\n# Configuration source priority:\n" +
+		"# 1. Command-line arguments (highest priority)\n" +
+		"# 2. Environment variables (LT_ prefix)\n" +
+		"# 3. Configuration file (linktadoru.yml)\n" +
+		"# 4. Default values (lowest priority)\n"
 
-	// Add footer with additional information
-	fmt.Printf("\n# Configuration source priority:\n")
-	fmt.Printf("# 1. Command-line arguments (highest priority)\n")
-	fmt.Printf("# 2. Environment variables (LT_ prefix)\n")
-	fmt.Printf("# 3. Configuration file (linktadoru.yml)\n")
-	fmt.Printf("# 4. Default values (lowest priority)\n")
+	if _, err := io.WriteString(stdout, header+string(yamlData)+footer); err != nil {
+		return fmt.Errorf("failed to write configuration: %w", err)
+	}
 
 	return nil
+}
+
+func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
+	redacted := *cfg
+
+	redacted.SeedURLs = make([]string, len(cfg.SeedURLs))
+	for i, seedURL := range cfg.SeedURLs {
+		redacted.SeedURLs[i] = redactSeedURLForDisplay(seedURL)
+	}
+	redacted.IncludePatterns = append([]string(nil), cfg.IncludePatterns...)
+	redacted.ExcludePatterns = append([]string(nil), cfg.ExcludePatterns...)
+	redacted.AllowedSchemes = append([]string(nil), cfg.AllowedSchemes...)
+	redacted.Headers = make([]string, len(cfg.Headers))
+	for i, header := range cfg.Headers {
+		redacted.Headers[i] = redactHeaderForDisplay(header)
+	}
+
+	if cfg.Auth == nil {
+		return &redacted
+	}
+
+	auth := *cfg.Auth
+	redacted.Auth = &auth
+
+	if cfg.Auth.Basic != nil {
+		basic := *cfg.Auth.Basic
+		if basic.Username != "" {
+			basic.Username = redactedConfigValue
+		}
+		if basic.Password != "" {
+			basic.Password = redactedConfigValue
+		}
+		auth.Basic = &basic
+	}
+
+	if cfg.Auth.Bearer != nil {
+		bearer := *cfg.Auth.Bearer
+		if bearer.Token != "" {
+			bearer.Token = redactedConfigValue
+		}
+		auth.Bearer = &bearer
+	}
+
+	if cfg.Auth.APIKey != nil {
+		apiKey := *cfg.Auth.APIKey
+		if apiKey.Value != "" {
+			apiKey.Value = redactedConfigValue
+		}
+		auth.APIKey = &apiKey
+	}
+
+	return &redacted
+}
+
+func redactSeedURLForDisplay(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return redactedConfigValue
+	}
+	if parsed.User == nil {
+		return raw
+	}
+	parsed.User = url.User("redacted")
+	return parsed.String()
+}
+
+func redactHeaderForDisplay(header string) string {
+	name, value, found := strings.Cut(header, ":")
+	if !found {
+		return redactedConfigValue
+	}
+	if strings.TrimSpace(name) == "" {
+		return ": " + redactedConfigValue
+	}
+	if strings.TrimSpace(value) == "" {
+		return strings.TrimSpace(name) + ":"
+	}
+	return strings.TrimSpace(name) + ": " + redactedConfigValue
 }
 
 func applySeedURLs(cmd *cobra.Command, args []string, cfg *config.CrawlConfig) error {
@@ -248,7 +341,7 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 
 	// Handle --show-config: display current configuration and exit
 	if showConfig {
-		return showCurrentConfig(cfg)
+		return showCurrentConfig(cmd, cfg)
 	}
 
 	// Initialize logging

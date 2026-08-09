@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- `--show-config` no longer prints resolved secrets. Basic-auth usernames and
+  passwords, bearer tokens, API-key values, every custom header value including
+  those loaded from `LT_HEADER_*`, and seed-URL userinfo are replaced with
+  `<redacted>` in both the configuration dump and the validation warnings on
+  stderr. Provenance fields such as `token_env` and header names remain visible,
+  and the crawler still receives the real values at runtime (#90).
+
 ## [0.11.0] - 2026-08-07
 
 Versioning note: v0.10.0 was withdrawn. This release uses v0.11.0 instead of
