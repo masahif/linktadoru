@@ -107,7 +107,13 @@ func init() {
 	// Database flags
 	rootCmd.Flags().StringP("database", "d", "./linktadoru.db", "Path to SQLite database file")
 
-	// Bind basic flags to viper
+	bindFlagsToViper()
+}
+
+// bindFlagsToViper connects the flags to their configuration keys. It is
+// separate from init() because viper.Reset() discards every binding, and a test
+// that resets viper has to restore them before driving the command again.
+func bindFlagsToViper() {
 	bindFlags := []struct {
 		viperKey string
 		flagName string

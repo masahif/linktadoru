@@ -469,11 +469,15 @@ func resetRootCmdForTest(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
 		viper.Reset()
+		bindFlagsToViper()
 		cfgFile = ""
 		configNamedExplicitly = false
 		rootCmd.SetArgs([]string{})
 	})
 	viper.Reset()
+	// viper.Reset drops every binding init() made, and init() does not run
+	// again. Without this the command would silently stop seeing its own flags.
+	bindFlagsToViper()
 	cfgFile = ""
 	if help := rootCmd.Flags().Lookup("help"); help != nil {
 		if err := help.Value.Set("false"); err != nil {
