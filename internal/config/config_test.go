@@ -519,7 +519,7 @@ func TestValidateHeadersDoesNotLeakHeaderValues(t *testing.T) {
 			if strings.Contains(err.Error(), "secret") {
 				t.Errorf("Validate() error leaked the header value: %v", err)
 			}
-			if !strings.Contains(err.Error(), "2") {
+			if !strings.Contains(err.Error(), "invalid header 2") {
 				t.Errorf("Validate() error does not identify which header was rejected: %v", err)
 			}
 		})

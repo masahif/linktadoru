@@ -159,6 +159,12 @@ export LT_HEADER_X_CUSTOM="MyCustomValue"
 ./linktadoru https://httpbin.org
 ```
 
+A header set this way replaces one of the same name coming from the
+configuration file or `--header`, and is otherwise appended to that list. A
+rejected header is reported by its position in the resulting list, which is not
+necessarily its line number in the configuration file. The value is never
+quoted back in the error.
+
 ## Logging
 
 Logging is configured in the configuration file only (no CLI flags or environment variables):
