@@ -198,7 +198,7 @@ func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, c
 		return nil
 	}
 
-	kinds := configuredCredentialKinds(cfg)
+	kinds := credentialsNotWrittenInFile(cfg, path)
 	if len(kinds) == 0 {
 		return nil
 	}
@@ -212,30 +212,98 @@ func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, c
 		"configuration file %s was found in the working directory rather than named with --config, "+
 			"and it supplies the seed URLs for this run while %s configured; "+
 			"a file you have not vouched for must not choose where your credentials are sent. "+
-			"Give the seed URLs on the command line to settle the destination yourself, or, "+
+			"Name the seeds yourself, as arguments or with --seed-file, to settle the destination, or, "+
 			"once you have read which destinations that file lists and are satisfied it is yours, "+
 			"name it with --config. --show-config prints the effective configuration without crawling",
 		path, strings.Join(kinds, " and "))
 }
 
-// configuredCredentialKinds names the credentials this run would send, without
-// reporting any part of their value. An empty result means the run carries
-// nothing worth protecting from the seed list.
-func configuredCredentialKinds(cfg *config.CrawlConfig) []string {
+// credentialsNotWrittenInFile names the credentials this run would send that
+// did not come from the file itself, without reporting any part of their value.
+//
+// The distinction matters because only the operator's secrets are worth
+// protecting from a destination the file picked. A value the file wrote belongs
+// to whoever wrote the file: sending it back to their own server costs the
+// operator nothing, and `Accept: application/json` -- which this project's own
+// example configuration carries -- is not a secret under anyone's definition.
+// Everything else is the operator's: their environment, their flags, and a
+// *_env key resolving against their environment all qualify.
+//
+// Provenance is decided by reading the file on its own and comparing. When it
+// cannot be read, every credential counts, since an unreadable file cannot
+// prove it wrote anything.
+func credentialsNotWrittenInFile(cfg *config.CrawlConfig, path string) []string {
+	file := fileValues(path)
+
 	var kinds []string
 	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
-		kinds = append(kinds, "basic authentication is")
+		if !file.wrote("auth.basic.username", username) || !file.wrote("auth.basic.password", password) {
+			kinds = append(kinds, "basic authentication is")
+		}
 	}
-	if cfg.GetBearerToken() != "" {
+	if token := cfg.GetBearerToken(); token != "" && !file.wrote("auth.bearer.token", token) {
 		kinds = append(kinds, "a bearer token is")
 	}
 	if header, value := cfg.GetAPIKeyCredentials(); header != "" && value != "" {
-		kinds = append(kinds, "an API key is")
+		if !file.wrote("auth.apikey.value", value) {
+			kinds = append(kinds, "an API key is")
+		}
 	}
-	if len(cfg.Headers) > 0 {
-		kinds = append(kinds, "custom headers are")
+	for _, header := range cfg.Headers {
+		if !file.wroteHeader(header) {
+			kinds = append(kinds, "custom headers are")
+			break
+		}
 	}
 	return kinds
+}
+
+// configFileValues is what a configuration file says on its own, before flags
+// and the environment are merged over it. A nil map means the file could not be
+// read, and every question about it answers "no".
+type configFileValues struct {
+	values  map[string]string
+	headers []string
+	read    bool
+}
+
+func fileValues(path string) configFileValues {
+	probe := viper.New()
+	probe.SetConfigFile(path)
+	if err := probe.ReadInConfig(); err != nil {
+		return configFileValues{}
+	}
+
+	values := make(map[string]string, len(credentialValueKeys))
+	for _, key := range credentialValueKeys {
+		values[key] = probe.GetString(key)
+	}
+	return configFileValues{values: values, headers: probe.GetStringSlice("headers"), read: true}
+}
+
+var credentialValueKeys = []string{
+	"auth.basic.username",
+	"auth.basic.password",
+	"auth.bearer.token",
+	"auth.apikey.value",
+}
+
+// wrote reports whether the file itself supplied this exact value. A value the
+// environment or a flag overrode will not match, which is the point.
+func (f configFileValues) wrote(key, value string) bool {
+	return f.read && value != "" && f.values[key] == value
+}
+
+func (f configFileValues) wroteHeader(header string) bool {
+	if !f.read {
+		return false
+	}
+	for _, own := range f.headers {
+		if own == header {
+			return true
+		}
+	}
+	return false
 }
 
 func generateUserAgent() string {

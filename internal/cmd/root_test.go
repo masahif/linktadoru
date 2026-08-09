@@ -455,6 +455,80 @@ func TestCheckConfigTrustAllows(t *testing.T) {
 	}
 }
 
+func TestCheckConfigTrustAllowsCredentialsTheFileItselfWrote(t *testing.T) {
+	// A value the file wrote belongs to whoever wrote the file. Sending it back
+	// to their own server costs the operator nothing, and this project's example
+	// configuration ships ordinary headers that would otherwise stop a crawl.
+	tests := []struct {
+		name     string
+		contents string
+		apply    func(cfg *config.CrawlConfig)
+	}{
+		{
+			name: "ordinary header",
+			contents: untrustedSeedConfig + `headers:
+  - "Accept: application/json"
+`,
+			apply: func(cfg *config.CrawlConfig) { cfg.Headers = []string{"Accept: application/json"} },
+		},
+		{
+			name: "bearer token written into the file",
+			contents: untrustedSeedConfig + `auth:
+  type: bearer
+  bearer:
+    token: a-token-belonging-to-whoever-wrote-this-file
+`,
+			apply: func(cfg *config.CrawlConfig) {
+				cfg.Auth = &config.Auth{Type: config.BearerAuthType, Bearer: &config.BearerAuth{Token: "a-token-belonging-to-whoever-wrote-this-file"}}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeWorkdirConfig(t, tt.contents)
+			cfg := configWithCredential(t, "none")
+			tt.apply(cfg)
+
+			if err := checkConfigTrust(false, path, true, cfg); err != nil {
+				t.Errorf("checkConfigTrust() = %v, want nil for a credential the file wrote itself", err)
+			}
+		})
+	}
+}
+
+func TestCheckConfigTrustRejectsFileValueOverriddenByEnvironment(t *testing.T) {
+	// LT_AUTH_BEARER_TOKEN wins over the file, so a placeholder in the file
+	// becomes the operator's real token by the time it is sent. The resolved
+	// value no longer matches what the file wrote, which is how that is caught.
+	path := writeWorkdirConfig(t, untrustedSeedConfig+`auth:
+  type: bearer
+  bearer:
+    token: placeholder-from-file
+`)
+	cfg := configWithCredential(t, "none")
+	cfg.Auth = &config.Auth{Type: config.BearerAuthType, Bearer: &config.BearerAuth{Token: "operator-secret"}}
+
+	err := checkConfigTrust(false, path, true, cfg)
+	if err == nil {
+		t.Fatal("checkConfigTrust() = nil, want an error when the resolved credential is not the one the file wrote")
+	}
+	if strings.Contains(err.Error(), "operator-secret") || strings.Contains(err.Error(), "placeholder-from-file") {
+		t.Errorf("error reports a credential value: %v", err)
+	}
+}
+
+func TestCheckConfigTrustWithUnreadableFile(t *testing.T) {
+	// A file that cannot be read cannot prove it wrote anything, so every
+	// credential counts.
+	path := writeWorkdirConfig(t, "this: is: not: valid: yaml:\n")
+	cfg := configWithCredential(t, "custom header")
+
+	if err := checkConfigTrust(false, path, true, cfg); err == nil {
+		t.Fatal("checkConfigTrust() = nil, want an error when provenance cannot be established")
+	}
+}
+
 func TestCheckConfigTrustWithoutConfigFile(t *testing.T) {
 	cfg := configWithCredential(t, "custom header")
 	if err := checkConfigTrust(false, "", true, cfg); err != nil {

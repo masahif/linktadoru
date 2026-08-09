@@ -246,10 +246,20 @@ $ linktadoru --config linktadoru.yml            # you vouch for the file
 $ linktadoru https://example.com/               # you choose the destination
 ```
 
-Either flag breaks the pair, and both are you stating where your credentials go.
-Any custom header counts as a credential here, whatever it contains: nothing
-distinguishes `Accept-Language` from `Authorization` once it is a configured
-header, so all of them are treated as worth protecting.
+Naming the seeds yourself — as arguments or through `--seed-file` — settles the
+destination whatever the file says. `--config` concedes the destination to the
+file, so it is the one to reach for after reading what the file lists. Both are
+you stating where your credentials go; `--seed-file` counts because you typed
+its path, the same way `--config` does.
+
+Only credentials that are *yours* trigger this. A value the file wrote itself
+belongs to whoever wrote the file, so an ordinary `Accept: application/json` in
+a found configuration changes nothing, and neither does a token written into it
+directly. What counts is a credential arriving from your environment, your
+flags, or a `*_env` key resolving against your environment — including the case
+where the file writes a placeholder and `LT_AUTH_BEARER_TOKEN` quietly replaces
+it. A configuration file that cannot be parsed proves nothing about what it
+wrote, so everything counts.
 Everything else keeps working untouched: a found file may still choose seeds
 when no credential is in play, and may still carry credentials written into it
 directly when you supply the seeds. `--show-config` is never blocked, since
