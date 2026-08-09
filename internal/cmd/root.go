@@ -194,12 +194,16 @@ func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, c
 		return nil
 	}
 
+	// Deliberately not a command to paste. An operator who is handed one will
+	// run it, which is the decision this check exists to interrupt.
 	return fmt.Errorf(
 		"configuration file %s was found in the working directory rather than named with --config, "+
 			"and it supplies the seed URLs for this run while %s configured; "+
 			"a file you have not vouched for must not choose where your credentials are sent. "+
-			"Re-run with --config %s to vouch for the file, or give the seed URLs on the command line",
-		path, strings.Join(kinds, " and "), path)
+			"Read which destinations that file lists, then either name it with --config once you "+
+			"are satisfied it is yours, or give the seed URLs on the command line. "+
+			"--show-config displays the effective configuration without crawling",
+		path, strings.Join(kinds, " and "))
 }
 
 // configuredCredentialKinds names the credentials this run would send, without

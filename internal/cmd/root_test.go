@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -444,5 +448,110 @@ func TestCheckConfigTrustWithoutConfigFile(t *testing.T) {
 	cfg := configWithCredential(t, "custom header")
 	if err := checkConfigTrust(false, "", true, cfg); err != nil {
 		t.Errorf("checkConfigTrust() = %v, want nil when no config file was read", err)
+	}
+}
+
+// resetRootCmdForTest undoes what earlier tests leave on the package-level
+// command. TestExecute runs --help, which latches rootCmd's help flag and makes
+// every later Execute print help and return nil instead of running the crawl.
+func resetRootCmdForTest(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		viper.Reset()
+		cfgFile = ""
+		configNamedExplicitly = false
+		rootCmd.SetArgs([]string{})
+	})
+	viper.Reset()
+	cfgFile = ""
+	if help := rootCmd.Flags().Lookup("help"); help != nil {
+		if err := help.Value.Set("false"); err != nil {
+			t.Fatalf("failed to clear the help flag: %v", err)
+		}
+		help.Changed = false
+	}
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+}
+
+// TestCrawlStopsBeforeSendingEnvCredentialToWorkdirSeeds drives the real
+// command with a configuration file the operator never named, and asserts the
+// destination it chose is never contacted. It is the end-to-end form of the
+// leak: the file carries no credential of its own, and LT_HEADER_AUTHORIZATION
+// supplies one from the environment.
+func TestCrawlStopsBeforeSendingEnvCredentialToWorkdirSeeds(t *testing.T) {
+	var contacted atomic.Int32
+	var sawCredential atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contacted.Add(1)
+		if r.Header.Get("Authorization") != "" {
+			sawCredential.Store(true)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>ok</body></html>"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "linktadoru.yml")
+	contents := "seed_urls:\n  - " + server.URL + "/\n"
+	if err := os.WriteFile(configPath, []byte(contents), 0600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LT_HEADER_AUTHORIZATION", "Bearer operator-secret")
+
+	resetRootCmdForTest(t)
+	// An empty slice means "no arguments"; nil would make cobra fall back to
+	// os.Args, which under `go test` is the test binary's own flags.
+	rootCmd.SetArgs([]string{})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() = nil, want a refusal to crawl seeds chosen by an unvouched config file")
+	}
+	if !strings.Contains(err.Error(), "--config") {
+		t.Errorf("error does not tell the operator how to proceed: %v", err)
+	}
+	if contacted.Load() != 0 {
+		t.Errorf("the destination chosen by the unvouched config was contacted %d time(s)", contacted.Load())
+	}
+	if sawCredential.Load() {
+		t.Error("the credential from the environment reached the destination chosen by the unvouched config")
+	}
+}
+
+// TestCrawlSendsEnvCredentialToVouchedConfigSeeds is the control for the test
+// above: with --config, the same configuration and environment do send the
+// credential to the same destination. Without this, a refusal that happened for
+// some unrelated reason would look identical to the gate working.
+func TestCrawlSendsEnvCredentialToVouchedConfigSeeds(t *testing.T) {
+	var sawCredential atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer operator-secret" {
+			sawCredential.Store(true)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>ok</body></html>"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "linktadoru.yml")
+	contents := "seed_urls:\n  - " + server.URL + "/\nlimit: 1\nconcurrency: 1\nignore_robots_txt: true\n"
+	if err := os.WriteFile(configPath, []byte(contents), 0600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LT_HEADER_AUTHORIZATION", "Bearer operator-secret")
+
+	resetRootCmdForTest(t)
+	rootCmd.SetArgs([]string{"--config", configPath})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want the crawl to run once the operator vouched for the config", err)
+	}
+	if !sawCredential.Load() {
+		t.Fatal("the credential never reached the seed, so the refusal test above proves nothing")
 	}
 }
