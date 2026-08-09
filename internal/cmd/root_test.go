@@ -229,6 +229,71 @@ func TestShowCurrentConfigRedactsInvalidHeaderValidationError(t *testing.T) {
 	}
 }
 
+func TestDescribeAuthForDisplayHidesCredentials(t *testing.T) {
+	t.Setenv("BANNER_BASIC_PASSWORD", "banner-password-secret")
+	t.Setenv("BANNER_BEARER_TOKEN", "banner-bearer-secret")
+	t.Setenv("BANNER_API_KEY_VALUE", "banner-api-key-secret")
+
+	tests := []struct {
+		name    string
+		auth    *config.Auth
+		want    string
+		secrets []string
+	}{
+		{
+			name: "no auth",
+			want: "None",
+		},
+		{
+			name: "basic with env password",
+			auth: &config.Auth{
+				Type: config.BasicAuthType,
+				Basic: &config.BasicAuth{
+					Username:    "banner-username-secret",
+					PasswordEnv: "BANNER_BASIC_PASSWORD",
+				},
+			},
+			want:    "Basic (username and password redacted)",
+			secrets: []string{"banner-username-secret", "banner-password-secret"},
+		},
+		{
+			name: "bearer from env",
+			auth: &config.Auth{
+				Type:   config.BearerAuthType,
+				Bearer: &config.BearerAuth{TokenEnv: "BANNER_BEARER_TOKEN"},
+			},
+			want:    "Bearer (token redacted)",
+			secrets: []string{"banner-bearer-secret"},
+		},
+		{
+			name: "api key from env",
+			auth: &config.Auth{
+				Type:   config.APIKeyAuthType,
+				APIKey: &config.APIKeyAuth{Header: "X-API-Key", ValueEnv: "BANNER_API_KEY_VALUE"},
+			},
+			want:    "API key (X-API-Key value redacted)",
+			secrets: []string{"banner-api-key-secret"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Auth = tt.auth
+
+			got := describeAuthForDisplay(cfg)
+			if got != tt.want {
+				t.Errorf("describeAuthForDisplay() = %q, want %q", got, tt.want)
+			}
+			for _, secret := range tt.secrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("describeAuthForDisplay() leaked secret %q", secret)
+				}
+			}
+		})
+	}
+}
+
 func TestInitializeCrawler(t *testing.T) {
 	// Create a temporary database
 	tempDir := t.TempDir()

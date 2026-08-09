@@ -215,6 +215,22 @@ func showCurrentConfig(cmd *cobra.Command, cfg *config.CrawlConfig) error {
 	return nil
 }
 
+// describeAuthForDisplay reports which credential the run will send without
+// revealing any part of it. Only the API-key header name is shown, because it
+// names the field rather than the secret carried in it.
+func describeAuthForDisplay(cfg *config.CrawlConfig) string {
+	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
+		return "Basic (username and password redacted)"
+	}
+	if token := cfg.GetBearerToken(); token != "" {
+		return "Bearer (token redacted)"
+	}
+	if header, value := cfg.GetAPIKeyCredentials(); header != "" && value != "" {
+		return fmt.Sprintf("API key (%s value redacted)", header)
+	}
+	return "None"
+}
+
 func redactConfigForDisplay(cfg *config.CrawlConfig) *config.CrawlConfig {
 	redacted := *cfg
 
@@ -415,12 +431,9 @@ func runCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Database: %s\n", cfg.DatabasePath)
 	fmt.Printf("  Ignore Robots.txt: %t\n", cfg.IgnoreRobotsTxt)
 
-	// Display auth status without exposing credentials
-	if username, password := cfg.GetBasicAuthCredentials(); username != "" && password != "" {
-		fmt.Printf("  Authentication: Basic (username: %s)\n", username)
-	} else {
-		fmt.Printf("  Authentication: None\n")
-	}
+	// Display auth status without exposing credentials. The username is part of
+	// the credential, so it is named as configured but never printed.
+	fmt.Printf("  Authentication: %s\n", describeAuthForDisplay(cfg))
 
 	// Initialize and start the crawler
 	crawler, store, err := initializeCrawler(cfg)

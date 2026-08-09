@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `<redacted>` in both the configuration dump and the validation warnings on
   stderr. Provenance fields such as `token_env` and header names remain visible,
   and the crawler still receives the real values at runtime (#90).
+- The startup banner no longer prints the resolved basic-auth username, and it
+  now reports bearer and API-key runs instead of labelling them
+  `Authentication: None`. The banner runs on every crawl, so it leaked the same
+  value `--show-config` redacts (#90).
 
 ## [0.11.0] - 2026-08-07
 
