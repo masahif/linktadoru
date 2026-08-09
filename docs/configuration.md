@@ -247,6 +247,9 @@ $ linktadoru https://example.com/               # you choose the destination
 ```
 
 Either flag breaks the pair, and both are you stating where your credentials go.
+Any custom header counts as a credential here, whatever it contains: nothing
+distinguishes `Accept-Language` from `Authorization` once it is a configured
+header, so all of them are treated as worth protecting.
 Everything else keeps working untouched: a found file may still choose seeds
 when no credential is in play, and may still carry credentials written into it
 directly when you supply the seeds. `--show-config` is never blocked, since

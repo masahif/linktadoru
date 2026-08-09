@@ -408,6 +408,7 @@ func TestCheckConfigTrustAllows(t *testing.T) {
 		name            string
 		namedExplicitly bool
 		seedsFromConfig bool
+		seedless        bool
 		credential      string
 		why             string
 	}{
@@ -430,12 +431,22 @@ func TestCheckConfigTrustAllows(t *testing.T) {
 			credential:      "none",
 			why:             "a crawl with no credential has nothing to exfiltrate",
 		},
+		{
+			name:            "config supplied no seeds",
+			seedsFromConfig: true,
+			credential:      "custom header",
+			seedless:        true,
+			why:             "a file that sets only non-seed options has chosen no destination, and a resume takes its work from the database",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeWorkdirConfig(t, untrustedSeedConfig)
 			cfg := configWithCredential(t, tt.credential)
+			if tt.seedless {
+				cfg.SeedURLs = nil
+			}
 
 			if err := checkConfigTrust(tt.namedExplicitly, path, tt.seedsFromConfig, cfg); err != nil {
 				t.Errorf("checkConfigTrust() = %v, want nil: %s", err, tt.why)

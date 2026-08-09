@@ -185,7 +185,10 @@ func initConfig() {
 // Naming the file with --config, or supplying the seeds on the command line,
 // breaks the pair. Either is the operator stating where their credentials go.
 func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, cfg *config.CrawlConfig) error {
-	if namedExplicitly || path == "" || !seedsFromConfig {
+	// len(SeedURLs) matters as much as where they came from: a found file that
+	// sets only, say, concurrency has chosen nothing, and a resume takes its
+	// work from the database rather than from either.
+	if namedExplicitly || path == "" || !seedsFromConfig || len(cfg.SeedURLs) == 0 {
 		return nil
 	}
 
@@ -194,15 +197,18 @@ func checkConfigTrust(namedExplicitly bool, path string, seedsFromConfig bool, c
 		return nil
 	}
 
-	// Deliberately not a command to paste. An operator who is handed one will
-	// run it, which is the decision this check exists to interrupt.
+	// Deliberately not a command to paste, and the safer way out comes first.
+	// Giving the seeds yourself settles the destination whatever the file says;
+	// --config concedes the destination to it, so it belongs after reading the
+	// file, not before. An operator handed a ready command runs it, which is the
+	// decision this check exists to interrupt.
 	return fmt.Errorf(
 		"configuration file %s was found in the working directory rather than named with --config, "+
 			"and it supplies the seed URLs for this run while %s configured; "+
 			"a file you have not vouched for must not choose where your credentials are sent. "+
-			"Read which destinations that file lists, then either name it with --config once you "+
-			"are satisfied it is yours, or give the seed URLs on the command line. "+
-			"--show-config displays the effective configuration without crawling",
+			"Give the seed URLs on the command line to settle the destination yourself, or, "+
+			"once you have read which destinations that file lists and are satisfied it is yours, "+
+			"name it with --config. --show-config prints the effective configuration without crawling",
 		path, strings.Join(kinds, " and "))
 }
 
