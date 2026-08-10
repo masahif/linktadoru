@@ -59,8 +59,8 @@ type CrawlConfig struct {
     RequestTimeout      time.Duration
     UserAgent           string
     IgnoreRobotsTxt     bool
-    FollowExternalHosts bool
     Limit               int
+    MaxDepth            int           // 0 = unlimited
     MaxResponseSize     int64         // bytes
     Auth                *Auth
     IncludePatterns     []string

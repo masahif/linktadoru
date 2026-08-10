@@ -74,7 +74,6 @@ func init() {
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "HTTP request timeout")
 	rootCmd.Flags().StringP("user-agent", "u", "LinkTadoru/1.0", "HTTP User-Agent header")
 	rootCmd.Flags().Bool("ignore-robots-txt", false, "Ignore robots.txt rules")
-	rootCmd.Flags().Bool("follow-external-hosts", false, "Allow all hosts with an allowed scheme (excludes still apply)")
 	rootCmd.Flags().IntP("limit", "l", 0, "Stop after N pages (0=unlimited)")
 	rootCmd.Flags().Int("max-depth", 0, "Maximum first-discovery depth (0=unlimited, seeds=0)")
 	rootCmd.Flags().Int64("max-response-size", 10*1024*1024, "Max response body size in bytes")
@@ -113,7 +112,6 @@ func init() {
 		{"request_timeout", "timeout"},
 		{"user_agent", "user-agent"},
 		{"ignore_robots_txt", "ignore-robots-txt"},
-		{"follow_external_hosts", "follow-external-hosts"},
 		{"limit", "limit"},
 		{"max_depth", "max-depth"},
 		{"max_response_size", "max-response-size"},

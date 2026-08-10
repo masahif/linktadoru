@@ -20,7 +20,7 @@ func TestPageProcessorExternalLinks(t *testing.T) {
 	<a href="/internal-page">Internal relative</a>
 	<a href="http://example.com/page1">Internal absolute</a>
 	
-	<!-- External links (should not be saved when follow_external_hosts=false) -->
+	<!-- External links are controlled by the crawler URL policy. -->
 	<a href="https://google.com/search">External: Google</a>
 	<a href="https://github.com/user/repo">External: GitHub</a>
 	<a href="http://httpbin.org/get">External: HTTPBin</a>

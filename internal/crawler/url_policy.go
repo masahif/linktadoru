@@ -16,10 +16,9 @@ type urlPolicy struct {
 	implicitOrigins map[string]struct{}
 	includes        []*regexp.Regexp
 	excludes        []*regexp.Regexp
-	allowAll        bool
 }
 
-func newURLPolicy(allowedSchemes, includes, excludes []string, allowAll bool) (*urlPolicy, error) {
+func newURLPolicy(allowedSchemes, includes, excludes []string) (*urlPolicy, error) {
 	schemes := make(map[string]struct{})
 	if len(allowedSchemes) == 0 {
 		allowedSchemes = []string{"https://", "http://"}
@@ -53,7 +52,6 @@ func newURLPolicy(allowedSchemes, includes, excludes []string, allowAll bool) (*
 		implicitOrigins: make(map[string]struct{}),
 		includes:        includePatterns,
 		excludes:        excludePatterns,
-		allowAll:        allowAll,
 	}, nil
 }
 
@@ -94,10 +92,7 @@ func (p *urlPolicy) allows(raw string) bool {
 		return false
 	}
 
-	allowed := p.allowAll
-	if !allowed {
-		_, allowed = p.implicitOrigins[origin]
-	}
+	_, allowed := p.implicitOrigins[origin]
 	if !allowed {
 		for _, re := range p.includes {
 			if re.MatchString(raw) {

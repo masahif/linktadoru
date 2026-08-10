@@ -417,14 +417,13 @@ func TestSameHostFiltering(t *testing.T) {
 
 	// Test default behavior (same-host only)
 	config := &config.CrawlConfig{
-		SeedURLs:            []string{server1.URL},
-		Limit:               10,
-		Concurrency:         1,
-		RequestDelay:        0.01, // 10ms in seconds
-		RequestTimeout:      2 * time.Second,
-		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:     true,
-		FollowExternalHosts: false, // Default - same host only
+		SeedURLs:        []string{server1.URL},
+		Limit:           10,
+		Concurrency:     1,
+		RequestDelay:    0.01, // 10ms in seconds
+		RequestTimeout:  2 * time.Second,
+		UserAgent:       "LinkTadoru-Test/1.0",
+		IgnoreRobotsTxt: true,
 	}
 
 	store := &HostFilteringTestStorage{}
@@ -441,49 +440,6 @@ func TestSameHostFiltering(t *testing.T) {
 	}
 	if crawler.urlPolicy.allows(server2.URL + "/external") {
 		t.Errorf("External host URL should be blocked")
-	}
-}
-
-// TestExternalHostsEnabled tests that external hosts are crawled when enabled
-func TestExternalHostsEnabled(t *testing.T) {
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`<html><body>Internal Page</body></html>`))
-	}))
-	defer server1.Close()
-
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`<html><body>External Page</body></html>`))
-	}))
-	defer server2.Close()
-
-	// Test with external hosts enabled
-	config := &config.CrawlConfig{
-		SeedURLs:            []string{server1.URL},
-		Limit:               10,
-		Concurrency:         1,
-		RequestDelay:        0.01, // 10ms in seconds
-		RequestTimeout:      2 * time.Second,
-		UserAgent:           "LinkTadoru-Test/1.0",
-		IgnoreRobotsTxt:     true,
-		FollowExternalHosts: true, // Enable external hosts
-	}
-
-	store := &HostFilteringTestStorage{}
-	crawler, err := NewCrawler(config, store)
-	if err != nil {
-		t.Fatalf("Failed to create crawler: %v", err)
-	}
-
-	// Test that both internal and external hosts are allowed
-	if !crawler.urlPolicy.allows(server1.URL + "/page1") {
-		t.Errorf("Same host URL should be allowed")
-	}
-	if !crawler.urlPolicy.allows(server2.URL + "/external") {
-		t.Errorf("External host URL should be allowed when follow_external_hosts is true")
 	}
 }
 

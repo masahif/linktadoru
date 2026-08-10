@@ -52,16 +52,15 @@ type Auth struct {
 // CrawlConfig holds crawler configuration
 type CrawlConfig struct {
 	// Basic crawling parameters
-	SeedURLs            []string      `mapstructure:"seed_urls" yaml:"seed_urls"`                         // Starting URLs for crawling
-	Concurrency         int           `mapstructure:"concurrency" yaml:"concurrency"`                     // Number of concurrent workers
-	RequestDelay        float64       `mapstructure:"request_delay" yaml:"request_delay"`                 // Delay between requests
-	RequestTimeout      time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"`             // HTTP request timeout
-	UserAgent           string        `mapstructure:"user_agent" yaml:"user_agent"`                       // HTTP User-Agent header
-	IgnoreRobotsTxt     bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"`         // Whether to ignore robots.txt
-	FollowExternalHosts bool          `mapstructure:"follow_external_hosts" yaml:"follow_external_hosts"` // Whether to crawl external hosts
-	Limit               int           `mapstructure:"limit" yaml:"limit"`                                 // Stop after N pages
-	MaxDepth            int           `mapstructure:"max_depth" yaml:"max_depth"`                         // 0 = unlimited; positive values include that discovery depth
-	MaxResponseSize     int64         `mapstructure:"max_response_size" yaml:"max_response_size"`         // Max response body size in bytes (0 = default 10MiB)
+	SeedURLs        []string      `mapstructure:"seed_urls" yaml:"seed_urls"`                 // Starting URLs for crawling
+	Concurrency     int           `mapstructure:"concurrency" yaml:"concurrency"`             // Number of concurrent workers
+	RequestDelay    float64       `mapstructure:"request_delay" yaml:"request_delay"`         // Delay between requests
+	RequestTimeout  time.Duration `mapstructure:"request_timeout" yaml:"request_timeout"`     // HTTP request timeout
+	UserAgent       string        `mapstructure:"user_agent" yaml:"user_agent"`               // HTTP User-Agent header
+	IgnoreRobotsTxt bool          `mapstructure:"ignore_robots_txt" yaml:"ignore_robots_txt"` // Whether to ignore robots.txt
+	Limit           int           `mapstructure:"limit" yaml:"limit"`                         // Stop after N pages
+	MaxDepth        int           `mapstructure:"max_depth" yaml:"max_depth"`                 // 0 = unlimited; positive values include that discovery depth
+	MaxResponseSize int64         `mapstructure:"max_response_size" yaml:"max_response_size"` // Max response body size in bytes (0 = default 10MiB)
 
 	// Authentication
 	Auth *Auth `mapstructure:"auth" yaml:"auth"` // Authentication configuration
@@ -88,17 +87,16 @@ type CrawlConfig struct {
 // DefaultConfig returns a configuration with default values
 func DefaultConfig() *CrawlConfig {
 	return &CrawlConfig{
-		Concurrency:         2,   // Reduced from 10 to 2
-		RequestDelay:        0.1, // 100ms in seconds // Reduced from 1s to 0.1s
-		RequestTimeout:      30 * time.Second,
-		UserAgent:           "LinkTadoru/1.0",
-		IgnoreRobotsTxt:     false,
-		FollowExternalHosts: false,            // Default to same-host only for safety
-		Limit:               0,                // unlimited
-		MaxDepth:            0,                // unlimited
-		MaxResponseSize:     10 * 1024 * 1024, // 10 MiB response body cap
-		DatabasePath:        "./linktadoru.db",
-		AllowedSchemes:      []string{"https://", "http://"}, // Default allowed URL schemes
+		Concurrency:     2,   // Reduced from 10 to 2
+		RequestDelay:    0.1, // 100ms in seconds // Reduced from 1s to 0.1s
+		RequestTimeout:  30 * time.Second,
+		UserAgent:       "LinkTadoru/1.0",
+		IgnoreRobotsTxt: false,
+		Limit:           0,                // unlimited
+		MaxDepth:        0,                // unlimited
+		MaxResponseSize: 10 * 1024 * 1024, // 10 MiB response body cap
+		DatabasePath:    "./linktadoru.db",
+		AllowedSchemes:  []string{"https://", "http://"}, // Default allowed URL schemes
 		// Logging defaults
 		LogLevel:      "info",
 		LogFile:       "",  // Empty means no file logging by default

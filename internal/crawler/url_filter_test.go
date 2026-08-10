@@ -7,7 +7,6 @@ func TestURLPolicyImplicitOriginAndExclude(t *testing.T) {
 		[]string{"https://", "http://"},
 		nil,
 		[]string{`/ika/`},
-		false,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +40,6 @@ func TestURLPolicyIncludeRequiresFullStringMatch(t *testing.T) {
 		[]string{"https://"},
 		[]string{`^https://good\.example/$|https://extra\.example/search`},
 		nil,
-		false,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -64,26 +62,25 @@ func TestURLPolicyIncludeRequiresFullStringMatch(t *testing.T) {
 }
 
 func TestURLPolicyRejectsLegacyRelativeInclude(t *testing.T) {
-	if _, err := newURLPolicy(nil, []string{`/products/`}, nil, false); err == nil {
+	if _, err := newURLPolicy(nil, []string{`/products/`}, nil); err == nil {
 		t.Fatal("relative include pattern was accepted")
 	}
 }
 
-func TestURLPolicyFollowExternalIgnoresIncludeAndHonorsExclude(t *testing.T) {
+func TestURLPolicyExcludeOverridesInclude(t *testing.T) {
 	policy, err := newURLPolicy(
 		nil,
-		[]string{`^https://included\.example/only$`},
+		[]string{`^https://included\.example/.*$`},
 		[]string{`/private/`},
-		true,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !policy.allows("https://other.example/public/page") {
-		t.Fatal("include_patterns unexpectedly narrowed follow_external_hosts")
+	if !policy.allows("https://included.example/public/page") {
+		t.Fatal("include pattern did not allow the matching URL")
 	}
-	if policy.allows("https://other.example/private/page") {
-		t.Fatal("exclude did not override follow_external_hosts")
+	if policy.allows("https://included.example/private/page") {
+		t.Fatal("exclude did not override include")
 	}
 }
 

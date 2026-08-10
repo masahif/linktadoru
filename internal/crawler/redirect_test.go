@@ -20,17 +20,17 @@ import (
 
 // newRedirectTestCrawler builds a crawler over the given seed so the redirect
 // policy is wired exactly as production does it.
-func newRedirectTestCrawler(t *testing.T, seedURL string, followExternal bool) *DefaultCrawler {
+func newRedirectTestCrawler(t *testing.T, seedURL string, includes ...string) *DefaultCrawler {
 	t.Helper()
 
 	cfg := &config.CrawlConfig{
-		SeedURLs:            []string{seedURL},
-		UserAgent:           "LinkTadoru-Test/1.0",
-		RequestTimeout:      5 * time.Second,
-		MaxResponseSize:     1 << 20,
-		AllowedSchemes:      []string{"https://", "http://"},
-		FollowExternalHosts: followExternal,
-		IgnoreRobotsTxt:     true,
+		SeedURLs:        []string{seedURL},
+		UserAgent:       "LinkTadoru-Test/1.0",
+		RequestTimeout:  5 * time.Second,
+		MaxResponseSize: 1 << 20,
+		AllowedSchemes:  []string{"https://", "http://"},
+		IncludePatterns: includes,
+		IgnoreRobotsTxt: true,
 	}
 
 	crawler, err := NewCrawler(cfg, nil)
@@ -151,7 +151,7 @@ func TestRedirectSameHostIsFollowed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	crawler := newRedirectTestCrawler(t, server.URL, false)
+	crawler := newRedirectTestCrawler(t, server.URL)
 
 	resp, err := crawler.httpClient.Get(context.Background(), server.URL+"/start")
 	if err != nil {
@@ -165,8 +165,8 @@ func TestRedirectSameHostIsFollowed(t *testing.T) {
 	}
 }
 
-// With follow_external_hosts=false a redirect to another host must fail, and
-// the external target must never be contacted.
+// Without an include pattern a redirect to another host must fail, and the
+// external target must never be contacted.
 func TestRedirectToExternalHostIsRejected(t *testing.T) {
 	var externalHits int32
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +180,7 @@ func TestRedirectToExternalHostIsRejected(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	crawler := newRedirectTestCrawler(t, origin.URL, false)
+	crawler := newRedirectTestCrawler(t, origin.URL)
 
 	_, err := crawler.httpClient.Get(context.Background(), origin.URL+"/start")
 	if !errors.Is(err, ErrRedirectNotAllowed) {
@@ -191,8 +191,8 @@ func TestRedirectToExternalHostIsRejected(t *testing.T) {
 	}
 }
 
-// With follow_external_hosts=true the redirect is allowed, but the credentials
-// configured for the origin must not be forwarded to the new host.
+// An included cross-origin redirect is allowed, but credentials configured for
+// the origin must not be forwarded to the new host.
 func TestRedirectToExternalHostDropsCredentials(t *testing.T) {
 	var got http.Header
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,13 +207,13 @@ func TestRedirectToExternalHostDropsCredentials(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	crawler := newRedirectTestCrawler(t, origin.URL, true)
+	crawler := newRedirectTestCrawler(t, origin.URL, "^"+regexp.QuoteMeta(external.URL)+"/.*$")
 	crawler.httpClient.SetAPIKeyAuth("X-Api-Key", "super-secret")
 	crawler.httpClient.SetCustomHeaders(map[string]string{"X-Internal-Token": "also-secret"})
 
 	resp, err := crawler.httpClient.Get(context.Background(), origin.URL+"/start")
 	if err != nil {
-		t.Fatalf("external redirect was rejected despite follow_external_hosts=true: %v", err)
+		t.Fatalf("included external redirect was rejected: %v", err)
 	}
 	if want := external.URL + "/landing"; resp.FinalURL != want {
 		t.Errorf("FinalURL = %q, want %q", resp.FinalURL, want)
@@ -244,7 +244,7 @@ func TestRedirectDropsBearerAuthorization(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	crawler := newRedirectTestCrawler(t, origin.URL, true)
+	crawler := newRedirectTestCrawler(t, origin.URL, "^"+regexp.QuoteMeta(external.URL)+"/.*$")
 	crawler.httpClient.SetBearerAuth("token-value")
 
 	if _, err := crawler.httpClient.Get(context.Background(), origin.URL+"/start"); err != nil {

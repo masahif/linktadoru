@@ -15,7 +15,7 @@ A high-performance web crawler and link analysis tool built in Go.
 - **Multiple Authentication Methods**: Support for Basic Auth, Bearer tokens, and API keys
 - **Custom HTTP Headers**: Set custom headers for requests
 - **Robots.txt Compliance**: Respects robots.txt rules and crawl delays
-- **Safe by Default**: Stays on the seed hosts (`follow_external_hosts: false`) and caps response bodies at 10 MiB (`max_response_size`)
+- **Safe by Default**: Stays on the seed origins unless an absolute URL range is added with `include_patterns`, and caps response bodies at 10 MiB (`max_response_size`)
 - **SQLite Storage**: All data stored in a queryable SQLite database
 - **Resumable**: Persistent queue for interrupted sessions
 - **Flexible Configuration**: CLI flags, environment variables, or config file with hierarchical support
