@@ -15,7 +15,7 @@ Go言語で構築された高性能Webクローラーおよびリンク解析ツ
 - **複数の認証方式**: Basic認証、Bearerトークン、APIキーに対応
 - **カスタムHTTPヘッダー**: リクエスト用カスタムヘッダーの設定
 - **Robots.txt準拠**: robots.txtルールとクロール遅延を尊重
-- **安全なデフォルト**: シードホスト内に留まり（`follow_external_hosts: false`）、レスポンスボディを10 MiBに制限（`max_response_size`）
+- **安全なデフォルト**: `include_patterns`で絶対URL範囲を追加しない限りシードorigin内に留まり、レスポンスボディを10 MiBに制限（`max_response_size`）
 - **SQLiteストレージ**: クエリ可能なSQLiteデータベースに全データを保存
 - **再開可能**: 中断されたセッション用の永続キュー
 - **柔軟な設定**: CLIフラグ、環境変数、または階層設定ファイル対応

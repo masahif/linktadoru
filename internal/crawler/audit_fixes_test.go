@@ -5,10 +5,8 @@ package crawler
 // robots.txt crawl-delay wiring.
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -94,31 +92,6 @@ func TestNewCrawlerRejectsInvalidPatterns(t *testing.T) {
 	cfg.ExcludePatterns = []string{"(unclosed"}
 	if _, err := NewCrawler(cfg, &MockStorage{}); err == nil || !strings.Contains(err.Error(), "exclude pattern") {
 		t.Errorf("invalid exclude pattern: err = %v, want exclude pattern error", err)
-	}
-}
-
-func TestNewCrawlerWarnsWhenFollowExternalIgnoresIncludes(t *testing.T) {
-	var output bytes.Buffer
-	previousLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
-	t.Cleanup(func() { slog.SetDefault(previousLogger) })
-
-	cfg := &config.CrawlConfig{
-		Concurrency:         1,
-		RequestDelay:        0.1,
-		RequestTimeout:      time.Second,
-		UserAgent:           "LinkTadoru-Test/1.0",
-		FollowExternalHosts: true,
-		IncludePatterns:     []string{`^https://included\.example/only$`},
-	}
-	if _, err := NewCrawler(cfg, &MockStorage{}); err != nil {
-		t.Fatal(err)
-	}
-
-	logOutput := output.String()
-	if !strings.Contains(logOutput, "include_patterns do not narrow this mode") ||
-		!strings.Contains(logOutput, "use exclude_patterns to restrict it") {
-		t.Fatalf("warning did not explain allow-all behavior: %s", logOutput)
 	}
 }
 

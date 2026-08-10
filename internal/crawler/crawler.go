@@ -100,17 +100,12 @@ func NewCrawler(config *config.CrawlConfig, storage Storage) (*DefaultCrawler, e
 		config.AllowedSchemes,
 		config.IncludePatterns,
 		config.ExcludePatterns,
-		config.FollowExternalHosts,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL policy: %w", err)
 	}
 	if len(config.IncludePatterns) > 0 {
-		if config.FollowExternalHosts {
-			slog.Warn("follow_external_hosts allows every URL with an allowed scheme; include_patterns do not narrow this mode; use exclude_patterns to restrict it")
-		} else {
-			slog.Warn("include_patterns add URL ranges; seed origins remain allowed; use exclude_patterns to narrow them")
-		}
+		slog.Warn("include_patterns add URL ranges; seed origins remain allowed; use exclude_patterns to narrow them")
 	}
 
 	crawler := &DefaultCrawler{

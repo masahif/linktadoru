@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-10
+
+### Removed
+- **Remove `follow_external_hosts` for v0.12.0.** The old
+  `--follow-external-hosts` flag is rejected as an unknown flag. The old YAML
+  key and `LT_FOLLOW_EXTERNAL_HOSTS` environment variable are ignored and have
+  no effect. Add trusted cross-origin ranges explicitly with
+  `include_patterns`, for example: `^https://trusted\.example(?:/.*)?$`.
+- Existing databases may mark pending URLs outside the current URL policy as
+  skipped. Re-add such URLs as explicit seeds if they need to be crawled.
+
 ## [0.11.0] - 2026-08-07
 
 Versioning note: v0.10.0 was withdrawn. This release uses v0.11.0 instead of

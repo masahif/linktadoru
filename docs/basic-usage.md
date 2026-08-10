@@ -85,7 +85,6 @@ Crawl multiple related sites:
 ```bash
 ./linktadoru \
   --limit 100 \
-  --include-patterns "^https?://[^/]*(site1|site2)\.com/.*" \
   https://site1.com \
   https://site2.com
 ```

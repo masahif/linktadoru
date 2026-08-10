@@ -145,7 +145,7 @@ func TestCrawlRespectsIncludePatterns(t *testing.T) {
 	}
 }
 
-func TestFollowExternalHostsIgnoresIncludesButHonorsExcludes(t *testing.T) {
+func TestCrawlIncludeExcludesAndStripsHeadersOffOrigin(t *testing.T) {
 	var externalHits atomic.Int32
 	var leakedSecret atomic.Bool
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -169,8 +169,7 @@ func TestFollowExternalHostsIgnoresIncludesButHonorsExcludes(t *testing.T) {
 
 	cfg := baseCfg()
 	cfg.SeedURLs = []string{seed.URL}
-	cfg.FollowExternalHosts = true
-	cfg.IncludePatterns = []string{`^https://included\.example/only$`}
+	cfg.IncludePatterns = []string{`^` + regexp.QuoteMeta(external.URL) + `/.*$`}
 	cfg.ExcludePatterns = []string{`/private/`}
 	cfg.Headers = []string{"X-Test-Secret: secret"}
 
