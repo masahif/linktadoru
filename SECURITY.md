@@ -15,6 +15,8 @@ The LinkTadoru team and community take all security bugs seriously. Thank you fo
 
 Report security bugs privately via GitHub's private vulnerability reporting: go to the repository's **Security** tab and choose **Report a vulnerability**. Please do not open a public issue for security bugs.
 
+If you cannot use GitHub's reporting, email masahif@gmail.com instead.
+
 The lead maintainer will acknowledge your report within 48 hours, and will send a more detailed response within a further 48 hours indicating the next steps in handling your report. After the initial reply to your report, the security team will endeavor to keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
 
 Please report security bugs in third-party modules to the person or team maintaining the module.
