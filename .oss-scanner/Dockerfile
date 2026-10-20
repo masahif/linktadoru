@@ -1,7 +1,7 @@
 # Build image for Anthropic OSS Scanner (https://github.com/anthropics/oss-scanner).
 # The scanner builds this with the repository as the build context, then removes
 # network access, so everything the tests need is fetched here.
-FROM golang:1.25-bookworm
+FROM golang:1.26-bookworm
 
 # -race in the test suite needs cgo.
 ENV DEBIAN_FRONTEND=noninteractive \

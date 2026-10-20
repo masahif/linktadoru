@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Building from source now requires Go 1.26 or later. Go 1.25 no longer
+  receives security fixes, and current releases of `golang.org/x/net`,
+  `golang.org/x/time`, and `modernc.org/sqlite` require Go 1.26.
+
 ## [0.12.0] - 2026-08-10
 
 ### Removed
