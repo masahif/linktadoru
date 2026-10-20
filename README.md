@@ -34,7 +34,7 @@ cd linktadoru
 make build
 ```
 
-Requirements: Go 1.23+
+Requirements: Go 1.26+
 
 ## Quick Start
 

@@ -77,7 +77,7 @@ Useful flags (can be persisted in a local `.actrc` file if you create one):
 act -P ubuntu-latest=catthehacker/ubuntu:act-22.04
 
 # Set environment variables
-act --env GO_VERSION=1.23
+act --env GO_VERSION=1.26
 ```
 
 ### Environment Variables

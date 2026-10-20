@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.23 or higher
+- Go 1.26 or higher
 - Make (optional but recommended)
 - golangci-lint (for linting)
 - Docker (for containerized development)
@@ -266,7 +266,7 @@ Releases are tag-driven: pushing a `v*` tag triggers the release workflow. See [
 1. **Module errors**: Run `go mod tidy`
 2. **Lint failures**: Run `golangci-lint run --fix`
 3. **Test failures**: Check recent changes, run with `-v` flag
-4. **Build errors**: Ensure Go 1.23+ is installed
+4. **Build errors**: Ensure Go 1.26+ is installed
 
 ### Debug Mode
 

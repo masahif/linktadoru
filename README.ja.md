@@ -34,7 +34,7 @@ cd linktadoru
 make build
 ```
 
-必要環境: Go 1.23以上
+必要環境: Go 1.26以上
 
 ## クイックスタート
 
